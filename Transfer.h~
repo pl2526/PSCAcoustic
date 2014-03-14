@@ -1,0 +1,62 @@
+/*
+ *  Transfer.h
+ *  PSC
+ *
+ *  Created by Pierre-David Letourneau on 1/9/11.
+ *  Copyright 2011 Stanford University. All rights reserved.
+ *
+ *  Implementation of the transfer pass; to transfer a given
+ *  field expansion (in spherical harmonics) from one center 
+ *  to a different center of expansion
+ *
+ */
+
+#ifndef TRANSFER_H
+#define TRANSFER_H
+
+#include "./FMMPS/General.h"
+#include "./FMMPS/MLFMM_Env.h"
+  
+class Transfer
+{
+
+  //Objects needed by FMM
+  FMM::HelmKernel KERNEL;
+  FMM::MLFMM_Env<FMM::HelmKernel, DIM> *MLFMMEnv;
+
+  std::vector<FMM::Vec3> p;
+  complex  k_l_out;
+  complex  k_t_out;
+
+ public:
+  
+  //Constructor
+  Transfer( int nLevels, double eps, complex  k_l_out_, complex k_t_out_, std::vector<Scatterer>& ScL);
+
+  //Destructor
+  ~Transfer();
+
+  //Execution of transfers
+  void execute( const std::vector< std::vector<complex > >& PWE, std::vector< std::vector<complex > >& T_PWE );
+};
+
+
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

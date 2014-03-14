@@ -1,0 +1,35 @@
+/*
+ *  Distributions.h
+ *  PSC
+ *
+ *  Created by Pierre-David Letourneau on 09/10/13.
+ *  Copyright 2011 Stanford University. All rights reserved.
+ *
+ *  Various routines to generate arrangements of scatterers.
+ */
+#ifndef DISTRIBUTIONS_H
+#define DISTRIBUTIONS_H
+
+#include "Constants.h"
+#include "Indexing.h"
+#include "Scatterer.h"
+
+// TODO: Comment
+
+// Prototype for arrangement generator
+std::vector<Scatterer> ScatInit( int N, complex k, complex k_out );
+
+// Prototype for various distributions
+std::vector<Pvec> ConcentricSpheres(double R, double r, double d);
+std::vector<Pvec> CylSlab(Pvec a, double r, double R, double h);
+std::vector<Pvec> RandSpherical(double R, double r, double d, Pvec c, double N);
+std::vector<Pvec> RandCubic(double Dx, double Dy, double Dz, double r, double d, Pvec c, double N);
+std::vector<Pvec> SphericalPeriodic(double R, Pvec center, double r, double p);
+std::vector<Pvec> ErgodCavity(double R, double t, Pvec center, double r, double d, double N);
+std::vector<Pvec> ErgodCavityPeriodic(double R, double t, Pvec center, double r, double p);
+std::vector<Pvec> ErgodCavity2(double R, Pvec center, double r, double d, double N);
+
+
+
+
+#endif

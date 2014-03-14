@@ -1,0 +1,81 @@
+/*
+ *  ElasticCoordChange.cpp
+ *  PSC
+ *
+ *  Created by Pierre-David Letourneau on 09/21/13.
+ *  Copyright 2011 Stanford University. All rights reserved.
+ *
+ */
+
+#ifndef ELASTICCOORDCHANGE_H
+#define ELASTICCOORDCHANGE_H
+
+#include "Constants.h"
+#include "General.h"
+#include "SpecialFunctions.h"
+#include "Coordinates.h"
+#include "Indexing.h"
+#include "./Eigen/Dense"
+
+using namespace Eigen;
+
+typedef Matrix<complex, Dynamic, Dynamic> Mat;
+
+class ECC{
+  
+  static Indexing global_index_cart;
+  static Indexing global_index_vswf;
+  
+  // Sample points on sphere
+  // TODO: Should be Pvec's
+  std::vector<double> pt_theta;   // Quadrature points in theta
+  std::vector<double> pt_phi;     // Quadrature points in phi
+  std::vector<double> w;          // Weights
+
+  // TODO: should not be public
+ public:
+
+  // Matrices to hold values of basis elements
+  Matrix<complex, Dynamic, Dynamic> P_B;  // Regular (Bessel) P matrix
+  Matrix<complex, Dynamic, Dynamic> P_H;  // Irregular (Hankel) P matrix
+  Matrix<complex, Dynamic, Dynamic> Q_B;  // Regular (Bessel) Q matrix
+  Matrix<complex, Dynamic, Dynamic> Q_H;  // Iregular (Hankel) Q matrix
+  Matrix<double, Dynamic, 1> SV_inv_P_H;
+  Matrix<double, Dynamic, 1> SV_inv_Q_B;
+
+  
+  JacobiSVD<Mat> SVD_Q_B;
+  JacobiSVD<Mat> SVD_P_H;
+  //public:
+  enum type{Bessel, Hankel};      // Regular or irregular spherical wave functionbs 
+
+  // Constructor/Destructor
+  ECC(){}
+  ~ECC(){}
+
+  // Initialization
+  void Compute(double r, complex k_l_out, complex k_t_out);
+
+  // Transforms
+  void C2S_B( std::vector<complex>& z_0, std::vector<complex>& z_1, std::vector<complex>& z_2, std::vector<complex>& z_3,
+	      std::vector<complex>& a_0, std::vector<complex>& a_1, std::vector<complex>& a_2 );  // Regular transform from cartesian to spherical coordinates
+  void S2C_H( std::vector<complex>& z_0, std::vector<complex>& z_1, std::vector<complex>& z_2, std::vector<complex>& z_3,
+	      std::vector<complex>& a_0, std::vector<complex>& a_1, std::vector<complex>& a_2 );  // Iregular transform from spherical to cartesian coordinates
+
+  // Utils
+  static std::vector< std::vector<complex> > gradient_VSWF( Indexing& index, Pvec& p, complex k, ECC::type Type );
+  static std::vector< std::vector<complex> > gradient_cart_SWF( Indexing& index, Pvec& p, complex k, ECC::type Type );
+  static std::vector< std::vector<complex> > curl_VSWF( Indexing& index, Pvec& p, complex k, ECC::type Type );
+  static std::vector< std::vector<complex> > curl_curl_VSWF( Indexing& index, Pvec& p, complex k, ECC::type Type  );
+};
+
+
+
+
+
+
+
+
+
+
+#endif

@@ -1,0 +1,98 @@
+#ifndef PSCEnv_CPP
+#define PSCEnv_CPP
+
+/*
+ *  PSCEnv.h
+ *  PSC
+ *
+ *  Created by Pierre-David Letourneau on 1/9/11.
+ *  Copyright 2011 Stanford University. All rights reserved.
+ *
+ *  Set up the environment for the Particle Scattering (ADD DETAILS)
+ */
+
+#include "PSCEnv.h"
+
+
+//Indexing PSC_Env::global_index(LMAX);
+
+void PSC_Env::Construct( complex k_l_out_, complex k_t_out_, std::vector<Scatterer> ScL_ )
+{
+  // Wave numbers
+  k_l_out = k_l_out_;  
+  k_t_out = k_t_out_;
+
+  
+  // TODO: streamline. Really needed?
+  // Change format for the list of scatterers
+  ScL.resize(ScL_.size());
+  for( int i = 0; i < (int) ScL_.size(); i++ )
+    ScL[i].copy(ScL_[i]);
+  
+  // Build transfer operator
+  transfer_l = new Transfer(nLevels, eps, k_l_out, ScL);  // Longitudinal waves
+  transfer_t = new Transfer(nLevels, eps, k_t_out, ScL);  // Transverse waves
+}
+
+// Safe releasing of memory
+void PSC_Env::Destruct(){
+  FMM::S_Rotation::S_Delete();
+  FMM::Z_transfer::Z_Delete();
+
+  delete transfer_l; transfer_l = NULL;
+  delete transfer_t; transfer_t = NULL;
+}
+
+
+
+/*
+
+  // TODO: MUST IMPLEMENT DIFFERENTLY FOR ALL KINDS OF WAVES
+// Write to file once solution has been obtained
+void PSC_Env::Finalize( std::vector< std::vector<complex > >& sol_out, std::vector< std::vector<complex > >& sol_in, Pvec& source_loc, int nIter, double res_norm, double rel_res_rhs, int nProc = 0){
+  
+  cout << "Post-processing..." << endl;
+
+  //---Standard solution output file---//
+  // The source information takes the form : [x,y,z,k_out,rho_out]
+  // x,y,z : location of the source
+  // k_out : wave number in the background
+  // rho_out : density in the background
+  //
+  // each solution entry takes the form : [x,y,z,k,rho,r,l,m,Re,Im]
+  // where :
+  // x,y,z : origin of expansion
+  // k : wave number inside scatterer
+  // rho : density inside scatterer
+  // r : radius of scatterer
+  // l,m : index of spherical wave function
+  // Re,Im : real and imaginary values of 
+
+  std::string filename(OUTPUT_PREFIX);
+  std::stringstream nProc_str;
+  nProc_str << nProc;
+  filename.append(nProc_str.str());
+  filename.append(".csv");
+  char *Filename = (char*) filename.c_str();
+  ofstream Outputfile_out(Filename, ios::out);
+
+
+ Outputfile_out << "Location (x) , Location (y), Location (z) , SWF degree (l) , SWF order (m) , Solution (real), Solution (imag)," << endl;
+  for ( int n = 0; n < NScat; n++ ){  
+    Pvec loc = ScL[n].getLocation();
+
+    for ( int i = 0; i < global_index.size(); i++ )
+      Outputfile_out << loc.x << "," << loc.y << "," << loc.z << "," << global_index(i,0) << "," << global_index(i,1) << "," << std::setprecision(15) << real(sol_out[n][i]) << "," << std::setprecision(15) << imag(sol_out[n][i]) << endl;
+ 
+  }
+  Outputfile_out << endl;
+  Outputfile_out.close();
+
+  cout << "Post-processing complete." << endl << endl << endl;
+}
+*/
+
+
+
+
+#endif

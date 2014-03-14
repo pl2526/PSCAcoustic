@@ -1,0 +1,212 @@
+/*
+ *  L_choice.h
+ *  PSC
+ *
+ *  Created by Pierre-David Letourneau on 12/3/12.
+ *  Copyright 2011 Stanford University. All rights reserved.
+ *
+ *  Routines used to established the number of coefficients necessary for each scatterers
+ *  and at each level in order to achieve a certain accuracy
+ */
+#ifndef L_CHOICE_H
+#define L_CHOICE_H
+
+#include "Coordinates.h"
+#include "Scatterer.h"
+//#include "./FMMPS/TransferUtils.h"
+
+
+
+
+
+
+
+double H_bound(int l, int l_p, double nu){
+  complex val = 0;
+  complex H;
+  for( int l_pp = std::abs(l-l_p); l_pp <= (l+l_p); l_pp++ ){
+	 (l_pp > nu) ? H = Amos_sf_hankel_1(l_pp, nu) : H = 1.;
+	 val += H;
+  }
+  
+  return pow(4.*PI, 3./2.) * std::abs(val);
+}
+
+
+double J_bound(int l, int l_p, double nu){
+  complex val = 0;
+  complex H;
+  for( int l_pp = std::abs(l-l_p); l_pp <= (l+l_p); l_pp++ ){
+	 (l_pp > nu) ? H = Amos_sf_bessel_jl(l_pp, nu) : H = 1.;
+	 val += H;
+  }
+  //cout << "val : " << std::abs( val ) << endl;
+  
+  return pow(4.*PI, 3./2.) * std::abs(val);
+}
+
+
+double B_series(double D, double u, int l_p, int l_pp){
+  double beta = std::abs( Amos_sf_hankel_1(l_pp, u) );
+  if( l_p > std::ceil(D*u-1./2.) )
+    beta *= std::abs( Amos_sf_bessel_jl(l_p, D*u) );
+  beta *= sqrt(std::min(l_p+1.,l_pp+1.));
+  return beta;
+}
+
+
+
+/*
+int L_max_scat(double r, double d, double C, double A, int N = 50){
+
+  std::vector<double> W(N);
+  for( int l = 0; l < N; l++ )
+    W[l] = 1. / std::abs(Amos_sf_hankel_1(l, K_L_OUT*r));
+
+
+  int L = 0;
+  bool precision;
+  double bound;
+  double val;
+  double Delta = std::max(std::real(K_L_OUT),std::real(K_T_OUT))*(2.*r+d);
+
+  Pvec p(0.,0.,0.,Pvec::Cartesian);
+  Scatterer S(RADIUS, K_L, K_T, K_L_OUT, K_T_OUT, RHO, p);
+  vector< std::vector<complex> > TM S.getTMatrix();
+
+  while( L < N ){
+    precision = true;
+
+    for( int l_s = 0; l_s < N; l_s++ ){
+	bound = 0;
+
+	val = 1;
+	int l = L+1;
+
+
+	double T =  4*PI*C*std::abs(Mie(K_L, K_L_OUT, r, RHO, l_s));
+	while( val > 1e-20 || l < N ){
+
+
+	  val = 0;
+	  //for( int m = -l; m <= l; m++ ){
+	    if( (l_s <= L && l > L) || (l_s > L) ){
+	      double h = T * W[l] * H_bound2(l, l_s, Delta);
+	      bound += h;
+	      val = std::max(val, std::abs(h));
+	    }
+
+	  l++;
+	}
+	  
+
+	if( A*bound > EPS ){
+	  precision = false;
+	  break;
+	}
+
+    }
+    
+    if( precision )
+      break;
+    else
+      L++;
+
+    cout << L << endl;
+  }
+  
+  return L;
+}
+*/
+
+
+
+
+int L_max_level( double boxSize, double C, int N = 50 ){
+
+  std::vector<double> W;
+
+  double D = sqrt(3.)/4.;
+  double u = std::max(std::abs(K_L_OUT), std::abs(K_T_OUT)) * 2. * boxSize;
+  
+  int L = 0;
+  if( boxSize > 0 ){
+    W.resize(N);
+    double nu_up = std::max( std::abs( K_L_OUT * sqrt(3.)/2. * boxSize), std::abs( K_T_OUT * sqrt(3.)/2. * boxSize) );
+    for( int l_p = 0; l_p < N; l_p++ ){
+      W[l_p] = 0;
+      for( int l = 0; l < N; l++ ){
+	W[l_p] += C*(2*l+1) * J_bound(l, l_p, nu_up) / std::abs(Amos_sf_hankel_1(l, K_L_OUT*RADIUS));
+      }
+    }
+
+    
+    std::vector< std::vector<double> > pre_Bound(N, std::vector<double>(2*N) );
+    for( int l_p = 0; l_p < N; l_p++ )
+      for( int l_pp = 0; l_pp < 2*N; l_pp++ )	  
+	pre_Bound[l_p][l_pp] = B_series(D, u, l_p, l_pp);
+      
+
+    std::vector< std::vector<complex> > TM;
+    Scatterer::TMConstruct(TM, N, K_L, K_T, K_L_OUT, K_T_OUT,  RADIUS, RHO);
+    std::vector<double> D(N+1);
+    std::vector< std::vector<double> > Bound(N, std::vector<double>(N) );
+    for( int L = 0; L < N; L++ ){
+      
+      D[L] = 0;
+      for( int j = 0; j < (int) TM[L].size(); j++ )
+	D[L] = std::max(D[L], std::abs(TM[L][j]));
+      
+      for( int l = 0; l < N; l++ ){
+	Bound[L][l] = 0;
+	for( int l_p = L+1; l_p < N; l_p++ ){	  
+	  for( int l_pp = abs(l-l_p); l_pp <= (l+l_p); l_pp++ )
+	    Bound[L][l] += pre_Bound[l_p][l_pp];
+	}
+      }
+
+    }
+   
+
+
+    bool precision;
+    double error;
+    L = 0;
+    while( L < N ){
+
+      precision = true;
+
+      error = 0;
+      double val;
+      for( int l = 0; l <= L; l++ ){
+	val = sqrt(4*PI*(2.*l+1)) * (2*l+1.) * W[l] * Bound[L][l];
+	if( l > std::abs(nu_up) )
+	  val *= std::abs(Amos_sf_bessel_jl(l, nu_up));
+	error += val;
+
+      }
+
+      // TODO: SHOULD NOT DEPEND ON GLOBAL CONSTANT
+      for( int l = 0; l < N; l++ ){
+	if( D[l] * error > EPS ){
+	  precision = false;
+	  break;
+	} 
+      }
+
+      if( precision )
+	break;
+
+      L++;
+    }
+
+  }
+
+  return L;
+}
+
+
+
+
+
+#endif

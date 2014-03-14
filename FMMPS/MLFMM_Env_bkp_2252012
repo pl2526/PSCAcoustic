@@ -1,0 +1,506 @@
+#ifndef MLFMM_Env_FMM_CPP
+#define MLFMM_Env_FMM_CPP
+
+#include "NTree.h"
+#include "Level.h"
+#include "SphericalHarmonicsTransform.h"
+
+/*
+ * A class to store MLFMM data which should be reused between iterations
+ */
+
+namespace FMM {
+
+
+  template <typename FUNC, int DIM>
+    class MLFMM_Env
+  {
+  public:
+    FUNC K;
+    complex k_out;
+    
+    std::vector<Leaf_Translation_Function*> leaf_Translation;
+    std::vector<Vec3> sourcefield;
+    std::vector< std::vector<complex> > SfH;
+    
+    NTree<DIM> tree;
+    std::vector<Level<DIM> > levels;
+
+    // The interface level is defined as the first level in the HF regime with box size above the cutoff
+    // or the leaf level if it is already in the HF regime
+    int Interface_Level;
+
+    
+    // Constructor
+    // TODO : Should pass ScL by reference but need to be constant...
+  MLFMM_Env( FUNC K_, complex k_out_, std::vector<Vec3> p, std::vector<Scatterer> ScL,
+	     int levels_ = 4, double eps = 1e-4)
+    : K(K_), k_out(k_out_), leaf_Translation(NScat), sourcefield(p), 
+      tree( p, levels_ ),    // Create the tree
+      levels( levels_+1 ),       // Initialize std::vector of levels
+      Interface_Level(-1)
+	{
+	  
+	  if( verbose >= 2 ){
+	    cout << "Initialization..." << endl;
+	    cerr << tree << endl;
+	  }
+	  
+	  int nLevels = tree.numLevels();
+	  
+	  // Construct each Level and give it the boxes it owns
+	  for( int L = 2; L <= nLevels; ++L ) {
+	    levels[L] = Level<DIM>( tree.getBoxSize(L) );
+	    for( int n = 0; n < (1 << (DIM*L)); ++n ) {
+	      Box* b = getBox(n,L);
+	      if( b != NULL ) getLevel(L).addBox(b);
+	    }
+	  }
+	  
+	  if( verbose >= 2 )
+	    cerr << "   Building Transfer and Close Lists..." << endl;
+
+	  // Recursively build transfer and close lists from rootbox
+	  defineTransferAndClose(getBox(0,0), 0);
+	  
+	  if( verbose >= 2 )
+	    cerr << "   Transfer and Close Lists Built" << endl << endl;
+	  
+
+	  //TODO : Should only be done for levels above cutoff line
+	  // Compute the quadrature for each level of the tree and Initialize fields
+	  for( int L = 2; L <= nLevels; ++L ) {
+	    //if( getLevel(L).HF )
+	    getLevel(L).defineQuadrature( K, eps );
+
+	    if( Interface( getLevel(L).getBoxSize()/2 ) || 
+		(Interface_Level == -1 && L == nLevels && getLevel(L-1).HF ) )
+	      {
+		Interface_Level = L;
+		getLevel(L).defineSH_T();
+	      }
+	    
+	    getLevel(L).initializeFields();
+	  }
+
+	  if( Interface_Level != -1 )
+	    getLevel(Interface_Level).INTF = true; // Record interface level;
+
+	  if( verbose >= 2 ){
+	    cout << "      Interface level : " << Interface_Level << endl;
+	    cout << "   Quadrature and SHT Defined" << endl;
+	  }
+
+	  // Initialize S_Rotation in Transfer Utilities
+	  int maxIndexSize = LMAX;
+	  for( int L = 2; L <= nLevels; ++L ){
+	    if( !getLevel(L).HF || L == Interface_Level){
+	      maxIndexSize = std::max(maxIndexSize, (*getLevel(L).getIndex())(getLevel(L).getIndex()->size()-1,0) );
+	    }
+	  }
+
+	  if( verbose >= 2 )
+	    cerr << "   Building S Rotation..." << endl;
+	  S_Rotation::S_Init( maxIndexSize );
+
+
+
+	  // Define the interpolators and anterpolators required for each level
+	  for( int L = 2; L <= nLevels; ++L ) {	  
+	    if( L != 2 ) 
+	      getLevel(L).defineInterp( getLevel(L-1).getQuad() );
+	    if( L != nLevels )
+	      getLevel(L).defineAnterp( getLevel(L+1).getQuad() );
+	  }
+
+	  if( verbose >= 2 )
+	    cout << "   Reterpolators Defined" << endl;
+
+
+
+	  // Compute the transfer functions for each level of the tree
+	  for( int L = 2; L <= nLevels; ++L ) {
+	    getLevel(L).defineTransfers( eps, k_out );
+	  }
+	  
+	  if( verbose >= 2 )
+	    cout << "   Transfer Functions Defined" << endl;
+	  
+	  // Compute the translation operators for each level of the tree 
+	  Indexing *pIndex, *cIndex;
+	  for( int L = 2; L < nLevels; ++L ) {
+	    (L==2) ? pIndex = NULL : pIndex = getLevel(L-1).getIndex();
+	    cIndex = getLevel(L+1).getIndex();
+	    
+	    getLevel(L).defineTranslations(pIndex, cIndex, k_out);
+	  }
+
+	  if( verbose >= 2 )
+	    cout << "   Translation Functions (at higher levels) Defined" << endl;
+	  
+
+
+	  // Compute the translation operators for each scatterer at the leaf level
+	  // TODO : Should probably be in class 'Level'
+	  // For each box at leaf level
+	  Level<DIM>& leafLevel = getLevel(nLevels);
+	  //cout << "Leaf box size : " << leafLevel.getBoxSize() << endl;
+	  for( BoxIter bi = leafLevel.boxbegin(); bi != leafLevel.boxend(); ++bi ) {
+	    Box* b = *bi;
+	    const Vec3& center = b->center;
+	    const Box::pointIter piEnd = b->pointIndex.end();
+	    
+	    // For each particle in box
+	    for( Box::pointIter pi = b->pointIndex.begin(); pi != piEnd; ++pi ) {
+	      int idx = *pi;
+	      const Vec3 r = center - sourcefield[idx];
+
+	      leaf_Translation[idx] = new Leaf_Translation_Function(r, k_out, getLevel(nLevels).getQuad(), 
+								    getLevel(nLevels).getIndex());
+	    }
+	  }
+    
+	  
+
+	  if( verbose >= 2 )
+	    cout << "   Translation Functions (at leaf level) Defined" << endl;
+	  
+	  
+	  for( BoxIter bi = leafLevel.boxbegin(); bi != leafLevel.boxend(); ++bi ) {
+	    Box* b = *bi;
+	    
+	    // for all interior points
+	    const Box::pointIter nEnd = b->pointIndex.end();
+	    for( Box::pointIter ni = b->pointIndex.begin(); ni != nEnd; ++ni ) {
+	      int n = *ni;
+
+	      // Add close transfers from other points inside this box
+	      for( Box::pointIter mi = b->pointIndex.begin(); mi != ni; ++mi ) {
+		int m = *mi;
+		
+		//from m to n
+		Vec3 r0 = sourcefield[n] - sourcefield[m];
+		leafLevel.addCloseTransfer(n, m, r0, k_out);
+		
+		//from n to m
+		Vec3 r1 = -r0;
+		leafLevel.addCloseTransfer(m, n, r1, k_out);
+	      }
+	    }
+	  }
+
+	  
+	  // Add close transfers from other points inside neighboring boxes
+	  for( CVIter cvi = leafLevel.closeList.begin(); cvi != leafLevel.closeList.end(); ++cvi ) {
+	    Box* b1 = cvi->b1;
+	    Box* b2 = cvi->b2;
+	    
+	    // For all pairs of points inside box b1 and b2
+	    const Box::pointIter nStart = b1->pointIndex.begin();
+	    const Box::pointIter nEnd   = b1->pointIndex.end();
+	    const Box::pointIter mStart = b2->pointIndex.begin();
+	    const Box::pointIter mEnd   = b2->pointIndex.end();
+	    
+	    for( Box::pointIter ni = nStart; ni != nEnd; ++ni ) {
+	      int n = *ni;
+	      const Vec3& pn = sourcefield[n];
+	      
+	      for( Box::pointIter mi = mStart; mi != mEnd; ++mi ) {
+		int m = *mi;
+		
+		//from m to n
+		Vec3 r0 = pn - sourcefield[m];
+		leafLevel.addCloseTransfer(n, m, r0, k_out);
+		
+		//from n to m
+		Vec3 r1 = -r0;
+		leafLevel.addCloseTransfer(m, n, r1, k_out);
+		
+	      }
+	    }
+	  }	
+	    
+	  if( verbose >= 2 )
+	    cout << "   Close transfer functions Defined" << endl;
+
+	  if( verbose >= 2 )
+	    cout << "Initialization Done" << endl;
+	}
+    
+    // Destructor
+    ~MLFMM_Env() {
+      for( int i = 0; i < (int) leaf_Translation.size(); i++ )
+	delete leaf_Translation[i];
+    }
+    
+
+    //inline FMMPreconditioner* getFMM_PC() { return FMM_PC; }
+
+    // Computes   omega = A*psi
+    // void execute( const complex outgoing[], complex transfered[], complex kappa, Type type)
+    void execute( const std::vector< std::vector<complex> >& PWE, std::vector< std::vector<complex> >& T_PWE, complex kappa, Type type)
+  {
+    // ***Adjoint traverses the tree in the opposite direction
+
+    int nLevels = tree.numLevels();
+
+    // Compute lowest level multipole
+    if( Interface_Level != -1 )
+      getLevel(Interface_Level).initializeFields( type );
+    Level<DIM>& leafLevel = getLevel( nLevels );
+    leafLevel.zeroFields();
+
+    
+    // Translate full multipole expansion to center of the box. Then, perform 
+    // Spherical Harmonics Transform if needed
+    //TODO : Should take into account HFMM can be used all the way when leaf size above cutoff...
+
+    double begin = clock();
+    // For each box at leaf level
+    for( BoxIter bi = leafLevel.boxbegin(); bi != leafLevel.boxend(); ++bi ) {
+      Box* b = *bi;
+      const Box::pointIter piEnd = b->pointIndex.end();
+      std::vector<complex> M(leafLevel.getIndex()->size());
+      
+      // For each particle in box
+      for( Box::pointIter pi = b->pointIndex.begin(); pi != piEnd; ++pi ) {
+	int idx = *pi;
+	
+	// Proceed to translation
+	if( type == FORWARD ){
+	  leaf_Translation[idx]->TranslateUp(M, PWE[idx], FORWARD);
+	  
+	  // Update box's multipole expansion
+	  assert( b->getMultipole().size() == M.size() );
+	  for( int k = 0; k < (int) M.size(); k++ )
+	    b->getMultipole()[k] += M[k];
+
+	} else if( type == ADJOINT ){
+	  leaf_Translation[idx]->TranslateDown(M, PWE[idx], ADJOINT);
+
+	  // Update box's local expansion
+	  assert( b->getLocal().size() == M.size() );
+	  for( int k = 0; k < (int) M.size(); k++ )
+	    b->getLocal()[k] += M[k];
+
+	}
+	
+
+      }
+    }
+    
+    if( verbose >= 1 )
+      cout << "Lowest Level Multipoles Done : " <<  (clock() - begin)*1./CLOCKS_PER_SEC << endl;
+    
+
+
+
+    
+    // Upward Pass
+
+    // If interface level is leaf level, perform Spherical Harmonics Transform
+    if( Interface_Level == nLevels )
+      leafLevel.computeSH_T_Forward( type );
+    
+    begin = clock();
+    for( int L = nLevels; L >= 3; --L ) 
+      {
+	Level<DIM>& level = getLevel(L);
+	Level<DIM>& pLevel = getLevel(L-1);
+	pLevel.zeroFields();
+	
+	// Translation up (for all boxes at level L)
+	for( BoxIter bi = level.boxbegin(); bi != level.boxend(); ++bi ) {
+	  Box* b = *bi;
+
+	  if( type == FORWARD )
+	    pLevel.getTranslationUp(b).TranslateUp(b, level.getInterp(), FORWARD);
+	  else if( type == ADJOINT )
+	    pLevel.getTranslationDown(b).TranslateDown(b, level.getInterp(), ADJOINT);
+	}
+	
+	// If parent level lies at HF-LF interface, perform Spherical Harmonics Transform
+	if( Interface_Level == (L-1) ){
+	  double begin = clock();
+	  pLevel.computeSH_T_Forward(type);
+	  //cout << "Forward higher SHT : " << (clock() - begin)*1./CLOCKS_PER_SEC  << endl;
+	}
+
+      }
+    if( verbose >= 1 )
+      cout << "Upward Pass Done : " << (clock() - begin)*1./CLOCKS_PER_SEC << endl;
+    
+
+
+    // Transfer pass - transfer expansions between far-neighbors
+    begin = clock();
+    for( int L = nLevels; L >= 2; --L ) 
+      {
+	getLevel(L).applyTransferFunctions( type );      
+      }
+    
+    if( verbose >= 1 )
+      cout << "Transfer List Applied : " << (clock() - begin)*1./CLOCKS_PER_SEC << endl;
+    
+   
+
+    // Downward pass 
+    begin = clock();
+    for( int L = 3; L <= nLevels; ++L ) 
+      {
+
+	Level<DIM>& level = getLevel(L);
+	Level<DIM>& pLevel = getLevel(L-1);
+
+	// If level lies at HF-LF intefrace perform spherical harmonics transform
+	if( Interface_Level == (L-1) )
+	  pLevel.computeSH_T_Backward(type);
+		
+	//Translation (for all boxes at level L)
+	for( BoxIter bi = level.boxbegin(); bi != level.boxend(); ++bi ) {
+	  Box* b = *bi;
+
+	  if( type == FORWARD )
+	    pLevel.getTranslationDown(b).TranslateDown(b, pLevel.getAnterp(), FORWARD);
+	  else if( type == ADJOINT )
+	    pLevel.getTranslationUp(b).TranslateUp(b, pLevel.getAnterp(), ADJOINT);
+	    
+	}
+
+      }
+
+    if( Interface_Level == nLevels )
+      leafLevel.computeSH_T_Backward(type);
+
+    if( verbose >= 1 )
+      cout << "Downward Pass Done : " << (clock() - begin)*1./CLOCKS_PER_SEC << endl;
+    
+
+
+    
+    // Translation down to observation points
+    begin = clock();
+    for( BoxIter bi = leafLevel.boxbegin(); bi != leafLevel.boxend(); ++bi ) {
+      Box* b = *bi;
+      
+      // for all interior points
+      const Box::pointIter nEnd = b->pointIndex.end();
+      for( Box::pointIter ni = b->pointIndex.begin(); ni != nEnd; ++ni ) {
+	int n = *ni;
+	
+	// Proceeds to translation
+	std::vector<complex> M;
+	if( type == FORWARD ){
+	  std::vector<complex> Local= b->getLocal();
+	  assert( (int) Local.size() == (int) leafLevel.getIndex()->size() );
+
+	  leaf_Translation[n]->TranslateDown(M, Local, FORWARD);
+	} else if( type == ADJOINT ){
+	  std::vector<complex> Multipole= b->getMultipole();
+	  assert( (int) Multipole.size() == (int) leafLevel.getIndex()->size() );
+
+	  leaf_Translation[n]->TranslateUp(M, Multipole, ADJOINT);
+	}
+	
+	// Update expansion
+	assert( (int) M.size() == Isize );
+	for( int k = 0; k < Isize; k++ ){
+	  //int idx = n*Isize + k;
+	  //transfered[idx] = M[k];
+	  T_PWE[n][k] = M[k];
+	}
+	
+      }
+    }
+    
+    if( verbose >= 1 )
+      cout << "Local Integration Done : " << (clock() - begin)*1./CLOCKS_PER_SEC << endl;
+
+    // Close-term interactions
+    begin = clock();
+    //leafLevel.applyClose( PWE, transfered, kappa, type );
+    leafLevel.applyClose( PWE, T_PWE, kappa, type );
+    
+    if( verbose >= 1 )
+      cout << "Close List Applied : " << (clock() - begin)*1./CLOCKS_PER_SEC << endl;
+  }
+
+
+
+
+
+
+  //-------- Private --------//
+
+  // Should be private...
+  inline Level<DIM>& getLevel( int L ) { return levels[L]; }
+  inline Box* getBox( int n, int L ) { return tree.getBox(n,L); }
+
+ private:
+
+  // Main algorithm to determine transfer pairs and close pairs
+  // Two boxes are transfers if their parents are neighbors and they aren't
+  // Two boxes are close if they are leaf level and are neighbors  
+  inline void defineTransferAndClose( Box* b, int L )
+  {
+    // For all the children of b
+    for( int k1 = 0; k1 < tree.BRANCH; ++k1 ) {
+      // Get the k1th child of b
+      Box* child1 = getBox( tree.child(b->n, k1), L+1 );
+      if( child1 == NULL ) continue;
+
+      // For all the other children of b
+      for( int k2 = k1+1; k2 < tree.BRANCH; ++k2 ) {
+	// Get the k2th child of b
+	Box* child2 = getBox( tree.child(b->n, k2), L+1 );
+	if( child2 == NULL ) continue;
+
+	// Call the neighbor routine on each pair of children
+	defineTransferAndClose( child1, child2, L+1 );
+      }
+
+      // If the child is not at the leaf level, recurse on the child
+      if( L+1 != tree.numLevels() )
+	defineTransferAndClose( child1, L+1 );
+    }
+  }
+
+  // Secondary algorithm to determine transfer pairs and close pairs
+  inline void defineTransferAndClose( Box* b1, Box* b2, int L )
+  {
+    // If leaf level, these boxes are a close pair
+    if( L == tree.numLevels() ) {
+      getLevel(L).addClose( b1, b2 );
+      return;
+    }
+
+    // For all the children of b1
+    for( int k1 = 0; k1 < tree.BRANCH; ++k1 ) {
+      // Get the k1th child of b1
+      Box* child1 = getBox( tree.child(b1->n, k1), L+1 );
+      if( child1 == NULL ) continue;
+
+      // For all the children of b2
+      for( int k2 = 0; k2 < tree.BRANCH; ++k2 ) {
+	// Get the k2th child of b2
+	Box* child2 = getBox( tree.child(b2->n, k2), L+1 );
+	if( child2 == NULL ) continue;
+
+	// Determine the transfer std::vector between the two children
+	Vec3 r0 = child1->center - child2->center;
+	if( r0.mag() > 1.8 * tree.getBoxSize(L+1) ) {
+	  // These two are not neighbors so they are a transfer pair
+	  getLevel(L+1).addTransfer( child1, child2 );
+	} else {
+	  // These two are neighbors so recurse
+	  defineTransferAndClose( child1, child2, L+1 );
+	}
+      }
+    }
+  }
+
+};
+
+}
+
+#endif

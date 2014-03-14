@@ -1,0 +1,124 @@
+#ifndef INTERPOLATOR_FMM_CPP
+#define INTERPOLATOR_FMM_CPP
+
+#include "Reterpolator.h"
+
+namespace FMM {
+  
+
+  // Constructor
+  // Interpolation from q1 to q2
+  FFTInterp_FFT2::FFTInterp_FFT2( Quadrature* q1_, Quadrature* q2_)
+   : q1(q1_), q2(q2_),
+    N_rows1(q1->numRows()), N_theta1(2*N_rows1-2), N_phi1(q1->maxRowSize()),
+    N_rows2(q2->numRows()), N_theta2(2*N_rows2-2), N_phi2(q2->maxRowSize()),
+    N_rows( std::max(N_rows1,N_rows2) ), 
+    N_phi( std::max(N_phi1,N_phi2) ), N_phi0( std::min(N_phi1,N_phi2) ), 
+    T( N_phi * N_rows ), t( std::max(N_theta1,N_theta2) )
+  {
+    fftw_complex* T0 = reinterpret_cast<fftw_complex*>(&T[0]);
+    fftw_complex* t0 = reinterpret_cast<fftw_complex*>(&t[0]);
+
+    // Define an phi1 FFT for each row
+    rFFT1 = std::vector<fftw_plan>( N_rows1 );
+    for( int n = 0; n < N_rows1; ++n ) {
+      int N_phi_n = q1->getRow(n).size();
+      fftw_complex* Tn = T0 + n*N_phi;
+      rFFT1[n] = fftw_plan_dft_1d(N_phi_n,Tn,Tn,FFTW_FORWARD,FFTW_MEASURE);
+    }
+
+    // Define a theta FFT and IFFT (could also do these as blocks...)
+    tFFT = fftw_plan_dft_1d(N_theta1, t0, t0, FFTW_FORWARD, FFTW_MEASURE);
+    tIFFT = fftw_plan_dft_1d(N_theta2, t0, t0, FFTW_BACKWARD, FFTW_MEASURE);
+    
+    // Define an phi2 IFFT for each row
+    rIFFT2 = std::vector<fftw_plan>( N_rows2 );
+    for( int n = 0; n < N_rows2; ++n ) {
+      int N_phi_n = q2->getRow(n).size();
+      fftw_complex* Tn = T0 + n*N_phi;
+      rIFFT2[n] = fftw_plan_dft_1d(N_phi_n,Tn,Tn,FFTW_BACKWARD,FFTW_MEASURE);
+    }
+  }
+  
+
+
+  // Destructor
+  FFTInterp_FFT2::~FFTInterp_FFT2() {
+    for( int n = 0; n < N_rows1; ++n )
+      fftw_destroy_plan( rFFT1[n] );
+    fftw_destroy_plan( tFFT );
+    fftw_destroy_plan( tIFFT );
+    for( int n = 0; n < N_rows2; ++n )
+      fftw_destroy_plan( rIFFT2[n] ); 
+  }
+
+  
+
+
+  // HF Interpolation from A(1) to B(2)
+  void FFTInterp_FFT2::apply( std::vector<complex>& vec_A, Quadrature* quad_A,
+			      std::vector<complex>& vec_B, Quadrature* quad_B)
+  {
+    
+    assert( quad_A == q1 && quad_B == q2 );
+
+    // Copy from A and interpolate each row
+    for( int n = 0; n < N_rows1; ++n ) {
+      QuadratureRow& rown = q1->getRow(n);
+      int N_phi_n = rown.size();
+      complex* Tn = &T[0] + n*N_phi;
+
+      // Copy into the kth row of T (scale for the upcoming interpolations)
+      for( int m = 0; m < N_phi_n; ++m ) 
+	Tn[m] = vec_A[ rown.getPoint(m).index ] / double(N_phi_n*N_theta1);
+
+      fftw_execute( rFFT1[n] );                    // FFT_phi
+      f_cut( Tn, N_phi_n, N_phi0 );                // Smooth phi
+    }
+
+    // Interpolate from N_theta1 to N_theta2
+    for( int m = 0; m < N_phi0; ++m ) {
+
+      int one = powneg1(m);
+
+      // Unwrap into t
+      t[0] = T[m + 0*N_phi];
+      for( int n = 1; n < N_rows1; ++n ) {
+	t[n]          = T[m + n*N_phi];
+	t[N_theta1-n] = one * T[m + n*N_phi];
+      }
+
+      // Interpolate from N_theta1 to N_theta2
+      fftw_execute( tFFT );                        // FFT_theta
+      f_cut( &t[0], N_theta1, N_theta2 );          // Smooth theta
+      t[N_theta2/2] = 0;                           // Zero oddball?
+      fftw_execute( tIFFT );                       // IFFT_theta
+
+      // Unwrap back into T
+      for( int n = 0; n < N_rows2; ++n ) {
+	T[m + n*N_phi] = t[n];
+      }
+    }
+
+    // Interpolate each row and copy into B
+    for( int n = 0; n < N_rows2; ++n ) {
+      QuadratureRow& rown = q2->getRow(n);
+      int N_phi_n = rown.size();
+      complex* Tn = &T[0] + n*N_phi;
+
+      f_cut( Tn, N_phi0, N_phi_n );                // Smooth phi
+      fftw_execute( rIFFT2[n] );                   // IFFT_phi
+
+      // Copy into B
+      for( int m = 0; m < N_phi_n; ++m ) 
+	vec_B[ rown.getPoint(m).index ] = Tn[m];
+
+    }
+  }
+
+
+
+}
+
+
+#endif

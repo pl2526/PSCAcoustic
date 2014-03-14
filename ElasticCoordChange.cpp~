@@ -1,0 +1,613 @@
+/*
+ *  ElasticCoordChange.cpp
+ *  PSC
+ *
+ *  Created by Pierre-David Letourneau on 09/21/13.
+ *  Copyright 2011 Stanford University. All rights reserved.
+ *
+ */
+
+#ifndef ELASTICCOORDCHANGE_CPP
+#define ELASTICCOORDCHANGE_CPP
+
+#include "ElasticCoordChange.h"
+
+//Indexing ECC::global_index_cart(LMAX);
+//Indexing ECC::global_index_vswf(LMAX_VSWF);
+
+// Constructor/Destructor
+void ECC::Compute(double r, complex k_l_out, complex k_t_out, int LMAX_cart, int LMAX_vswf)
+{
+
+  global_index_cart.Compute(LMAX_cart);
+  global_index_vswf.Compute(LMAX_vswf);
+
+  // TODO : CHECK
+  r = 5.;
+
+  // ***NOTE: these numbers are somewhat "arbitrary". They should be large so as
+  //          to get good resolution, but not too large for speed.
+  int size_t = 2*(LMAX+1);
+  int size_p = 2*(2*LMAX+1);
+  
+
+  // TODO: is w needed?
+  // Theta
+  getGaussLegendreQuad(size_t, pt_theta, w);
+  for( int i = 0; i < size_t; i++ ){
+    pt_theta[i] = acos(pt_theta[i]);
+    //w[i] *= 1./size_p;
+  }
+  
+  // Phi
+  pt_phi.resize(size_p);
+  for( int i = 0; i < size_p; i++ )
+    pt_phi[i] = i * 2.*PI/size_p;
+  
+  
+
+  // Compute matrix elements
+  // Convention:
+  // row-wise: 0:(N-1) -> x-component; N:(2N-1) -> y-component; 2N:(3N-1) -> z-component
+  // col-wise: 0:(N-1) -> gradient; N:(2N-1) -> curl; 2N:(3N-1) -> curl-curl
+  int row_size = size_t*size_p;
+  int col_size_cart = (LMAX_cart+1)*(LMAX_cart+1);
+  int col_size_vswf = (LMAX_vswf+1)*(LMAX_vswf+1);
+
+  P_B.resize(3*row_size, 4*col_size_cart);
+  P_H.resize(3*row_size, 4*col_size_cart);
+  Q_B.resize(3*row_size, 3*col_size_vswf);
+  Q_H.resize(3*row_size, 3*col_size_vswf);
+
+  // Convention (P) : col-wise : gradient scalar poten. -> x-comp of curl vec. poten. -> y-comp of curl vect poten. -> x-comp of curl vec. poten.
+
+// ****It is assumed that the VSWF basis has the same normalization as: P.C. Waterman "Matrix theory of elastic wave scattering)****
+
+  complex C_g = 1.;//sqrt(PI)*pow(k_l_out/k_t_out, 3./2.) / k_l_out;
+
+  int m = 0;  // keeps track of row index
+  for( int i_t = 0; i_t < size_t; i_t++ ){
+    for( int i_p = 0; i_p < size_p; i_p++ ){
+      Pvec p(r, pt_theta[i_t], pt_phi[i_p], Pvec::Spherical);  // Location of sample point
+
+      // Regular matrices
+      std::vector< std::vector<complex> > grad = gradient_VSWF(global_index_vswf, p, k_l_out, Bessel);
+      std::vector< std::vector<complex> > curl = curl_VSWF(global_index_vswf, p, k_t_out, Bessel);
+      std::vector< std::vector<complex> > curl_curl = curl_curl_VSWF(global_index_vswf, p, k_t_out, Bessel);
+
+      std::vector< std::vector<complex> > grad_cart_l = gradient_cart_SWF(global_index_cart, p, k_l_out, Bessel);
+      std::vector< std::vector<complex> > grad_cart_t = gradient_cart_SWF(global_index_cart, p, k_t_out, Bessel);
+
+
+      /*      cout << "r : " << p.r << "; theta : " << std::setprecision(15) << p.theta << " ; phi : " << std::setprecision(15) << p.phi << endl;
+      for( int i = 0; i < grad.size(); i++ )
+	cout <<  curl_curl[i][0] << " : " <<   curl_curl[i][1] << " : " <<   curl_curl[i][2] << " : " << endl;
+	cout << endl;*/
+
+
+      for( int i = 0; i < (int) global_index_vswf.size() ; i++ ){
+
+	int l = global_index_vswf(i,0);
+	complex C_c = 1.;//0.; if( l > 0 ) C_c = sqrt(PI/(l*(l+1.)));
+	complex C_cc = 1.;//C_c / k_t_out;
+
+	// VSWF
+	Q_B(m,i) = C_c * curl[i][0];                         // x-component of curl (vswf)
+	Q_B(m+row_size,i) = C_c * curl[i][1];           // y-component of curl (vswf)
+	Q_B(m+2*row_size,i) = C_c * curl[i][2];         // z-component of curl (vswf)
+
+	Q_B(m,i+col_size_vswf) = C_cc * curl_curl[i][0];                   // x-component of curl_curl (vswf)
+	Q_B(m+row_size,i+col_size_vswf) = C_cc * curl_curl[i][1];     // y-component of curl_curl (vswf)
+	Q_B(m+2*row_size,i+col_size_vswf) = C_cc * curl_curl[i][2];   // z-component of curl_curl (vswf)
+
+	Q_B(m,i+2*col_size_vswf) = C_g * grad[i][0];                                             // x-component of gradient (vswf)
+	Q_B(m+row_size,i+2*col_size_vswf) = C_g * grad[i][1];                               // y-component of gradient (vswf)
+	Q_B(m+2*row_size,i+2*col_size_vswf) = C_g * grad[i][2];                             // z-component of gradient (vswf)
+
+      }
+      
+      
+      for( int i = 0; i < (int) global_index_cart.size() ; i++ ){
+	// Displacement from potentials
+	P_B(m,i) = grad_cart_l[i][0];                          // x-comp of grad scalar potential
+	P_B(m+row_size,i) = grad_cart_l[i][1];            // y-comp of grad scalar potential 
+	P_B(m+2*row_size,i) = grad_cart_l[i][2];          // z-comp of grad scalar potential
+
+	P_B(m,i+col_size_cart) = 0.;                                       // x-component of curl associated w/ Cartesian x-component
+	P_B(m+row_size,i+col_size_cart) = grad_cart_t[i][2];         // y-component of curl associated w/ Cartesian x-component
+	P_B(m+2*row_size,i+col_size_cart) = -grad_cart_t[i][1];       // z-component of curl associated w/ Cartesian x-component
+	
+	P_B(m,i+2*col_size_cart) = -grad_cart_t[i][2];                    // x-component of curl associated w/ Cartesian y-component  
+	P_B(m+row_size,i+2*col_size_cart) = 0.;                     // y-component of curl associated w/ Cartesian y-component  
+	P_B(m+2*row_size,i+2*col_size_cart) = grad_cart_t[i][0];     // z-component of curl associated w/ Cartesian y-component  
+	
+	P_B(m,i+3*col_size_cart) = grad_cart_t[i][1];                   // x-component of curl associated w/ Cartesian z-component  
+	P_B(m+row_size,i+3*col_size_cart) = -grad_cart_t[i][0];    // y-component of curl associated w/ Cartesian z-component  
+	P_B(m+2*row_size,i+3*col_size_cart) = 0.;                 // z-component of curl associated w/ Cartesian z-component 	
+      }
+
+      
+
+      // Irregular matrices
+      grad = gradient_VSWF(global_index_vswf, p, k_l_out, Hankel);
+      curl = curl_VSWF(global_index_vswf, p, k_t_out, Hankel);
+      curl_curl = curl_curl_VSWF(global_index_vswf, p, k_t_out, Hankel);
+      
+      grad_cart_l = gradient_cart_SWF(global_index_cart, p, k_l_out, Hankel);
+      grad_cart_t = gradient_cart_SWF(global_index_cart, p, k_t_out, Hankel);
+
+
+      /* cout << "r : " << p.r << "; theta : " << std::setprecision(15) << p.theta << " ; phi : " << std::setprecision(15) << p.phi << endl;
+      for( int i = 0; i < grad.size(); i++ )
+	cout <<  curl_curl[i][0] << " : " <<   curl_curl[i][1] << " : " <<   curl_curl[i][2] << " : " << endl;
+	cout << endl;*/
+
+      
+      for( int i = 0; i < (int) global_index_vswf.size() ; i++ ){
+
+	int l = global_index_vswf(i,0);
+	complex C_c = 1.;// 0.; if( l > 0 ) C_c = sqrt(PI)/(l*(l+1.));
+	complex C_cc = 1.;//C_c / k_t_out;
+	
+	// VSWF
+	Q_H(m,i) = C_c * curl[i][0];                         // x-component of curl (vswf)
+	Q_H(m+row_size,i) = C_c * curl[i][1];           // y-component of curl (vswf)
+	Q_H(m+2*row_size,i) = C_c * curl[i][2];         // z-component of curl (vswf)
+	
+	Q_H(m,i+col_size_vswf) = C_cc * curl_curl[i][0];                   // x-component of curl_curl (vswf)
+	Q_H(m+row_size,i+col_size_vswf) = C_cc * curl_curl[i][1];     // y-component of curl_curl (vswf)
+	Q_H(m+2*row_size,i+col_size_vswf) = C_cc * curl_curl[i][2];   // z-component of curl_curl (vswf)
+
+	Q_H(m,i+2*col_size_vswf) = C_g * grad[i][0];                                             // x-component of gradient (vswf)
+	Q_H(m+row_size,i+2*col_size_vswf) = C_g * grad[i][1];                               // y-component of gradient (vswf)
+	Q_H(m+2*row_size,i+2*col_size_vswf) = C_g * grad[i][2];                             // z-component of gradient (vswf)
+      }
+
+      for( int i = 0; i < (int) global_index_cart.size() ; i++ ){
+	// Displacement from potentials
+	P_H(m,i) = grad_cart_l[i][0];                          // x-comp of grad scalar potential
+	P_H(m+row_size,i) = grad_cart_l[i][1];            // y-comp of grad scalar potential 
+	P_H(m+2*row_size,i) = grad_cart_l[i][2];          // z-comp of grad scalar potential
+
+	P_H(m,i+col_size_cart) = 0.;                                       // x-component of curl associated w/ Cartesian x-component
+	P_H(m+row_size,i+col_size_cart) = grad_cart_t[i][2];         // y-component of curl associated w/ Cartesian x-component
+	P_H(m+2*row_size,i+col_size_cart) = -grad_cart_t[i][1];       // z-component of curl associated w/ Cartesian x-component
+	
+	P_H(m,i+2*col_size_cart) = -grad_cart_t[i][2];                    // x-component of curl associated w/ Cartesian y-component  
+	P_H(m+row_size,i+2*col_size_cart) = 0.;                     // y-component of curl associated w/ Cartesian y-component  
+	P_H(m+2*row_size,i+2*col_size_cart) = grad_cart_t[i][0];     // z-component of curl associated w/ Cartesian y-component  
+	
+	P_H(m,i+3*col_size_cart) = grad_cart_t[i][1];                   // x-component of curl associated w/ Cartesian z-component  
+	P_H(m+row_size,i+3*col_size_cart) = -grad_cart_t[i][0];    // y-component of curl associated w/ Cartesian z-component  
+	P_H(m+2*row_size,i+3*col_size_cart) = 0.;                 // z-component of curl associated w/ Cartesian z-component 	
+      }
+
+      m++;  // Increment
+    }
+  }
+
+  // SVD (for least-squares) of various matrices
+  SVD_Q_B.compute(Q_B, ComputeThinU | ComputeThinV);
+  SVD_P_H.compute(P_H, ComputeThinU | ComputeThinV);
+
+  // TODO: Establish appropriate tolerance
+  double tol = 1e-12;
+  SV_inv_Q_B = SVD_Q_B.singularValues();
+  for( int i = 0; i < (int) Q_B.cols(); i++ ){
+    if( SV_inv_Q_B(i) > tol )
+      SV_inv_Q_B(i) = 1./SV_inv_Q_B(i);
+    else
+      SV_inv_Q_B(i) = 0.;
+  }
+
+  SV_inv_P_H = SVD_P_H.singularValues();
+  for( int i = 0; i < (int) P_H.cols(); i++ ){
+    if( SV_inv_P_H(i) > tol )
+      SV_inv_P_H(i) = 1./SV_inv_P_H(i);
+    else
+      SV_inv_P_H(i) = 0.;
+  }
+
+}
+
+
+
+// Convention
+// z_0 : components of scalar potential
+// z_1 : x-components of vector potential
+// z_2 : y-components of vector potential
+// z_3 : z-components of vector potential
+// a_0 : components of VSWF curl
+// a_1 : components of VSWF curl-curl
+// a_2 : components of VSWF grad
+// Regular transform from cartesian to spherical coordinates
+void ECC::C2S_B( std::vector<complex>& z_0, std::vector<complex>& z_1, std::vector<complex>& z_2, std::vector<complex>& z_3,
+		 std::vector<complex>& a_0, std::vector<complex>& a_1, std::vector<complex>& a_2 ){
+
+  assert( (int) 4*z_0.size() == (int) P_B.cols() );
+  assert( (int) 4*z_1.size() == (int) P_B.cols() );
+  assert( (int) 4*z_2.size() == (int) P_B.cols()  );
+  assert( (int) 4*z_3.size() == (int) P_B.cols()  );
+  assert( (int) 3*a_0.size() == (int) Q_B.cols() );
+  assert( (int) 3*a_1.size() == (int) Q_B.cols() );
+  assert( (int) 3*a_2.size() == (int) Q_B.cols() );
+
+  // Change format
+  int s = P_B.cols()/4;
+  Matrix<complex, Dynamic, 1> z; z.resize(4*s,1);
+
+  for( int i = 0; i < s; i++ ){
+    z(i) = z_0[i];
+    z(i+s) = z_1[i];
+    z(i+2*s) = z_2[i];
+    z(i+3*s) = z_3[i];
+  }
+  
+  // Apply P_B matrix
+  z = P_B * z;
+
+  //for( int i = 0; i < z.rows(); i++ )
+  //  cout << z(i) << endl;
+
+  // Solve L-S problem with Q_B
+   Matrix<complex, Dynamic, 1> a = SVD_Q_B.matrixV() * (SV_inv_Q_B.asDiagonal() * (SVD_Q_B.matrixU().adjoint()*z));
+   assert( a.rows() == Q_B.cols() );
+
+  // TODO :remove
+  // compute norm
+  Matrix<complex, Dynamic, 1> temp = Q_B*a;
+  double norm = 0;
+  double err = 0;
+  for( int i = 0; i < z.rows(); i ++ ){
+    //cout << "C2S error : " << std::abs( temp(i) - z(i) ) << endl;
+    err += std::abs( temp(i) - z(i) )*std::abs( temp(i) - z(i) );
+    norm += std::abs( z(i,0) )*std::abs( z(i,0) );
+  }
+  cout << "C2S relative error : " << sqrt(err / norm) << " : absolute error:  " << sqrt(err) << endl;
+
+  // Change format
+  s = Q_B.cols()/3;
+  for( int i = 0; i < s; i++ ){
+    a_0[i] = a(i,0);
+    a_1[i] = a(i+s,0);
+    a_2[i] = a(i+2*s,0);
+  }
+
+  return;
+}
+
+// Iregular transform from spherical to cartesian coordinates
+void ECC::S2C_H( std::vector<complex>& z_0, std::vector<complex>& z_1, std::vector<complex>& z_2, std::vector<complex>& z_3,
+		 std::vector<complex>& a_0, std::vector<complex>& a_1, std::vector<complex>& a_2 ){
+
+  assert( (int) 4*z_0.size() == (int) P_H.cols()  );
+  assert( (int) 4*z_1.size() == (int) P_H.cols() );
+  assert( (int) 4*z_2.size() == (int) P_H.cols() );
+  assert( (int) 4*z_3.size() == (int) P_H.cols() );
+  assert( (int) 3*a_0.size() == (int) Q_H.cols() );
+  assert( (int) 3*a_1.size() == (int) Q_H.cols() );
+  assert( (int) 3*a_2.size() == (int) Q_H.cols() );
+
+  // Change format
+  int s = Q_H.cols()/3;
+  Matrix<complex, Dynamic, 1> a; a.resize(3*s,1);
+  for( int i = 0; i < (int) s ; i++ ){
+    a(i) = a_0[i];
+    a(i+s) = a_1[i];
+    a(i+2*s) = a_2[i];
+
+    //cout << a_0[i] << " : " <<  a_0[i] << " : " <<  a_0[i] << " : " << endl;
+  }
+
+
+  // Apply Q_H matrix
+  a = Q_H * a;
+
+  // Invert P_H matrix (Pseudo-inverse)
+  Matrix<complex, Dynamic, 1> z = SVD_P_H.matrixV() * (SV_inv_P_H.asDiagonal() * (SVD_P_H.matrixU().adjoint()*a));
+  assert( z.rows() == P_H.cols() );
+
+ // TODO :remove
+  // compute norm
+  Matrix<complex, Dynamic, 1> temp = P_H*z;
+  double norm = 0;
+  double err = 0;
+  for( int i = 0; i < a.rows(); i ++ ){
+    err += std::abs( temp(i,0) - a(i,0) ) * std::abs( temp(i,0) - a(i,0) );
+    norm += std::abs( a(i,0) ) * std::abs( a(i,0) );
+  }
+  cout << "S2C relative error : " << sqrt(err/norm) << " : absolute error " << sqrt(err) << endl;
+  
+  // Change format
+  s = P_H.cols()/4;
+  for( int i = 0; i < s; i++ ){
+    z_0[i] = z(i,0);
+    z_1[i] = z(i+s,0);
+    z_2[i] = z(i+2*s,0);
+    z_2[i] = z(i+3*s,0);
+  }
+
+  return;
+}
+
+
+
+
+
+// ***Derivatives***
+
+// Derivatives of coordinate functions
+
+// 1st order
+// R
+inline complex d_r_x(Pvec& p)
+{
+  return p.x/p.r;
+}
+
+inline complex d_r_y(Pvec& p)
+{
+  return p.y/p.r;
+}
+
+inline complex d_r_z(Pvec& p)
+{
+  return p.z/p.r;
+}
+
+
+// Theta
+inline complex d_theta_x(Pvec& p)
+{
+  return p.z*p.x / (sqrt(p.x*p.x+p.y*p.y) * (p.x*p.x+p.y*p.y+p.z*p.z));
+}
+
+inline complex d_theta_y(Pvec& p)
+{
+  return p.z*p.y / (sqrt(p.x*p.x+p.y*p.y) * (p.x*p.x+p.y*p.y+p.z*p.z));
+}
+
+inline complex d_theta_z(Pvec& p)
+{
+  return -sqrt(p.x*p.x+p.y*p.y) / (p.x*p.x+p.y*p.y+p.z*p.z);
+}
+
+// Phi
+inline complex d_phi_x(Pvec& p)
+{
+  return -p.y / (p.x*p.x+p.y*p.y);
+}
+
+inline complex d_phi_y(Pvec& p)
+{
+  return p.x / (p.x*p.x+p.y*p.y);
+}
+
+inline complex d_phi_z(Pvec& p)
+{
+  return 0.;
+}
+
+
+
+// Derivatives of associated Legendre polynomials
+inline double d_legendre_x(int l, int m, double x)
+{
+  double val = 0.;
+  if( abs(m) < l && l > 0 ){
+    val = 1./(x*x-1) * (l*x*gsl_sf_legendre(l,m,x) - (l+std::abs(m))*sqrt((2.*l+1)/(2.*l-1))*sqrt(((double) l-std::abs(m))/((double) l+std::abs(m)))*gsl_sf_legendre(l-1,m,x) );
+      }else if( abs(m) == l && l > 0 ){
+    val = 1./(x*x-1) * ( -(l+std::abs(m))*(l-std::abs(m)+1.)*sqrt(1./(2.*l))*sqrt(1-x*x)*gsl_sf_legendre(l,std::abs(m)-1,x) 
+    		- std::abs(m)*x*gsl_sf_legendre(l,std::abs(m),x) );
+    if( m < 0 )
+      val *= pow(-1., std::abs(m));
+  }
+
+  return val;
+}
+
+inline double d_legendre_xx(int l, int m, double x)
+{
+  double val = 0.;
+  if( abs(m) < l && l > 0 )
+    val = -2*x/pow(x*x-1,2.) * (l*x*gsl_sf_legendre(l,m,x) 
+				- (l+std::abs(m))*sqrt((2*l+1.)/(2*l-1.))*sqrt(((double) l-std::abs(m))/((double) l+std::abs(m)))*gsl_sf_legendre(l-1,m,x))
+      + 1./(x*x-1) * ( l*gsl_sf_legendre(l,m,x) + l*x*d_legendre_x(l,m,x)   
+		       - (l+std::abs(m))*sqrt((2*l+1.)/(2*l-1.))*sqrt(((double) l-std::abs(m))/((double) l+std::abs(m)))*d_legendre_x(l-1,m,x));
+  else if( abs(m) == l && l > 0 ){
+    val = -2*x/pow(x*x-1,2.) * ( -(l+std::abs(m))*(l-std::abs(m)+1.)*sqrt(1./(2.*l))*sqrt(1-x*x)*gsl_sf_legendre(l,std::abs(m)-1,x) 
+				 - std::abs(m)*x*gsl_sf_legendre(l,std::abs(m),x) )
+      + 1./(x*x-1) * ( -(l+std::abs(m))*(l-std::abs(m)+1.)*sqrt(1./(2.*l))*(-x/sqrt(1-x*x)*gsl_sf_legendre(l,std::abs(m)-1,x)
+									   + sqrt(1.-x*x)*d_legendre_x(l,std::abs(m)-1,x))
+		       -std::abs(m)*gsl_sf_legendre(l,std::abs(m),x) - std::abs(m)*x*d_legendre_x(l,std::abs(m),x) );
+    if( m < 0 )
+      val *= pow(-1., std::abs(m));
+  }
+  return val;
+
+
+
+}
+
+
+// Derivatives of spherical harmonics (Cartesian coordinates)
+// 1st order
+inline complex d_sh_x(int l, int m, Pvec& p)
+{
+  return d_legendre_x(l,m,cos(p.theta)) * (-sin(p.theta)) * d_theta_x(p) * exp(m*p.phi*CI) 
+    + gsl_sf_legendre(l,m,cos(p.theta)) * ((double) m * CI) * exp(m*p.phi*CI) * d_phi_x(p);
+}
+
+inline complex d_sh_y(int l, int m, Pvec& p)
+{
+  return d_legendre_x(l,m,cos(p.theta)) * (-sin(p.theta)) * d_theta_y(p) * exp(m*p.phi*CI) 
+    + gsl_sf_legendre(l,m,cos(p.theta)) * ((double) m * CI) * exp(m*p.phi*CI) * d_phi_y(p);
+}
+
+inline complex d_sh_z(int l, int m, Pvec& p)
+{
+  return d_legendre_x(l,m,cos(p.theta)) * (-sin(p.theta)) * d_theta_z(p) * exp(m*p.phi*CI) 
+    + gsl_sf_legendre(l,m,cos(p.theta)) * ((double) m * CI) * exp(m*p.phi*CI) * d_phi_z(p);
+}
+
+
+
+// Derivatives of spherical harmonics (spherical coordinates)
+// 1st order
+
+inline complex d_sh_t(int l, int m, Pvec& p)
+{
+  return d_legendre_x(l,m,cos(p.theta)) * (-sin(p.theta)) * exp(m*p.phi*CI) ;
+}
+
+inline complex d_sh_p(int l, int m, Pvec& p)
+{
+  return gsl_sf_legendre(l,m,cos(p.theta)) * (m+0.) * CI * exp(m*p.phi*CI);
+}
+
+// 2nd order
+
+inline complex d_sh_tt(int l, int m, Pvec& p)
+{
+  return ( d_legendre_xx(l,m,cos(p.theta)) * pow(sin(p.theta),2.) + d_legendre_x(l,m,cos(p.theta)) * (-cos(p.theta)) ) * exp(m*p.phi*CI) ;
+}
+
+inline complex d_sh_pp(int l, int m, Pvec& p)
+{
+  return gsl_sf_legendre(l,m,cos(p.theta)) * (-m*m + 0.) * exp(m*p.phi*CI);
+}
+
+
+
+// Conversions
+// Convention 0:r, 1:theta, 2:phi
+void convert_Sf2Cart( std::vector<complex>& val, Pvec& p ){
+  assert( val.size() == 3 );
+  complex val_x = val[0]*p.x/p.r + val[1]*p.z*p.x/(p.r*sqrt(p.x*p.x+p.y*p.y)) - val[2]*p.y/sqrt(p.x*p.x+p.y*p.y);
+  complex val_y = val[0]*p.y/p.r + val[1]*p.z*p.y/(p.r*sqrt(p.x*p.x+p.y*p.y)) + val[2]*p.x/sqrt(p.x*p.x+p.y*p.y);
+  complex val_z = val[0]*p.z/p.r - val[1]*sqrt(p.x*p.x+p.y*p.y)/p.r;
+
+  val[0] = val_x; val[1] = val_y; val[2] = val_z; 
+  return;
+} 
+
+
+
+// Gradient (vector spherical wave functions)
+std::vector< std::vector<complex> > ECC::gradient_VSWF( Indexing& index, Pvec& p, complex k, ECC::type Type ){
+  std::vector< std::vector<complex> > val(index.size(), std::vector<complex>(3));
+  complex C;
+
+  for( int i = 0; i < index.size(); i++ ){
+    int l = index(i,0);
+    int m = index(i,1);
+
+    C = 1.;//sqrt(PI) * pow(K_L_OUT/K_T_OUT,3./2.) * 1./K_L_OUT;
+    //if( m != 0 ) C *= sqrt(2.);
+    
+    if( Type == Bessel ){
+      val[i][0] = gsl_sf_harmonic(l,m,p.theta,p.phi) * k*Amos_sf_bessel_jl_prime(l,k*p.r) ;         // r-component
+      val[i][1] = 1./p.r * d_sh_t(l,m,p) * Amos_sf_bessel_jl(l,k*p.r);                             // theta-component
+      val[i][2] = 1./(p.r*sin(p.theta)) * d_sh_p(l,m,p) * Amos_sf_bessel_jl(l,k*p.r);                // phi-component
+    }else if( Type == Hankel ){
+      val[i][0] = gsl_sf_harmonic(l,m,p.theta,p.phi) * k*Amos_sf_hankel_l_prime(l,k*p.r);         // r-component
+      val[i][1] = 1./p.r * d_sh_t(l,m,p) * Amos_sf_hankel_1(l,k*p.r);                             // theta-component
+      val[i][2] = 1./(p.r*sin(p.theta)) * d_sh_p(l,m,p) * Amos_sf_hankel_1(l,k*p.r);                // phi-component
+    }
+
+    // Transform from spherical to cartesian coordinates
+    convert_Sf2Cart(val[i], p);
+  }
+  
+  return val;
+}
+
+// Curl (vector spherical wave functions)
+std::vector< std::vector<complex> > ECC::curl_VSWF( Indexing& index, Pvec& p, complex k, ECC::type Type ){
+  std::vector< std::vector<complex> > val(index.size(), std::vector<complex>(3));
+  complex C = 1.;
+  
+  for( int i = 0; i < index.size(); i++ ){
+    int l = index(i,0);
+    int m = index(i,1);
+    //if ( l > 0 ) C = sqrt(PI)/sqrt(l*(l+1.));
+    //if( m != 0 ) C *= sqrt(2.);
+    
+    if( Type == Bessel ){
+      val[i][0] = 0.;                                                             // r-component
+      val[i][1] = 1./sin(p.theta) * d_sh_p(l,m,p) * gsl_sf_bessel_jl(l,std::abs(k)*p.r);   // theta-component
+      val[i][2] = (-1.)*d_sh_t(l,m,p) * Amos_sf_bessel_jl(l,k*p.r);                    // phi-component
+    }else if( Type == Hankel ){
+      val[i][0] = 0.;                                                             // r-component
+      val[i][1] = 1./sin(p.theta) * d_sh_p(l,m,p) * Amos_sf_hankel_1(l,k*p.r);    // theta-component
+      val[i][2] = (-1.)*d_sh_t(l,m,p) * Amos_sf_hankel_1(l,k*p.r);                     // phi-component
+    }
+
+    // Transform from spherical to cartesian coordinates
+    convert_Sf2Cart(val[i], p);
+  }
+  
+  return val;
+}
+
+
+// Curl-curl (vector spherical wave functions)
+std::vector< std::vector<complex> > ECC::curl_curl_VSWF( Indexing& index, Pvec& p, complex k, ECC::type Type  ){
+  std::vector< std::vector<complex> > val(index.size(), std::vector<complex>(3));
+  complex C = 1.;
+
+  for( int i = 0; i < index.size(); i++ ){
+    int l = index(i,0);
+    int m = index(i,1);
+    //if( l > 0 ) C = sqrt(PI)/sqrt(l*(l+1.)) * 1./K_T_OUT;
+    //if( m != 0 ) C *= sqrt(2.);
+
+    
+    if( Type == Bessel ){
+      val[i][0] = C * (-1.)*Amos_sf_bessel_jl(l,k*p.r)/(p.r*sin(p.theta)) * ( cos(p.theta)*d_sh_t(l,m,p) + sin(p.theta)*d_sh_tt(l,m,p) 
+								     + 1./sin(p.theta)*d_sh_pp(l,m,p) );                       // r-component
+      val[i][1] = d_sh_t(l,m,p) * ( 1./p.r*Amos_sf_bessel_jl(l,k*p.r) + k*Amos_sf_bessel_jl_prime(l,k*p.r) );                // theta-component
+      val[i][2] = d_sh_p(l,m,p)/sin(p.theta) * ( 1./p.r*Amos_sf_bessel_jl(l,k*p.r) + k*Amos_sf_bessel_jl_prime(l,k*p.r) );    // phi-component
+    }else if( Type == Hankel ){
+      val[i][0] = (-1.)*Amos_sf_hankel_1(l,k*p.r)/(p.r*sin(p.theta)) * ( cos(p.theta)*d_sh_t(l,m,p) + sin(p.theta)*d_sh_tt(l,m,p) 
+								  + 1./sin(p.theta)*d_sh_pp(l,m,p) );                       // r-component
+      val[i][1] = d_sh_t(l,m,p) * ( 1./p.r*Amos_sf_hankel_1(l,k*p.r) + k*Amos_sf_hankel_l_prime(l,k*p.r) );                // theta-component
+      val[i][2] = d_sh_p(l,m,p)/sin(p.theta) * ( 1./p.r*Amos_sf_hankel_1(l,k*p.r) + k*Amos_sf_hankel_l_prime(l,k*p.r) );    // phi-component
+    }
+
+    // Transform from spherical to cartesian coordinates
+    convert_Sf2Cart(val[i], p);
+  }
+  
+  return val;
+}
+
+// gradient (spherical wave functions)
+std::vector< std::vector<complex> > ECC::gradient_cart_SWF( Indexing& index, Pvec& p, complex k, ECC::type Type ){
+  std::vector< std::vector<complex> > val(index.size(), std::vector<complex>(3));
+  
+  for( int i = 0; i < index.size(); i++ ){
+    int l = index(i,0);
+    int m = index(i,1);
+    
+    if( Type == Bessel ){
+      val[i][0] = d_sh_x(l,m,p)*Amos_sf_bessel_jl(l,k*p.r) + gsl_sf_harmonic(l,m,p.theta,p.phi)*k*Amos_sf_bessel_jl_prime(l,k*p.r)*d_r_x(p);   // x-component
+      val[i][1] = d_sh_y(l,m,p)*Amos_sf_bessel_jl(l,k*p.r) + gsl_sf_harmonic(l,m,p.theta,p.phi)*k*Amos_sf_bessel_jl_prime(l,k*p.r)*d_r_y(p);   // y-component
+      val[i][2] = d_sh_z(l,m,p)*Amos_sf_bessel_jl(l,k*p.r) + gsl_sf_harmonic(l,m,p.theta,p.phi)*k*Amos_sf_bessel_jl_prime(l,k*p.r)*d_r_z(p);   // z-component
+    }else if( Type == Hankel ){
+      val[i][0] = d_sh_x(l,m,p)*Amos_sf_hankel_1(l,k*p.r) + gsl_sf_harmonic(l,m,p.theta,p.phi)*k*Amos_sf_hankel_l_prime(l,k*p.r)*d_r_x(p);     // x-component
+      val[i][1] = d_sh_y(l,m,p)*Amos_sf_hankel_1(l,k*p.r) + gsl_sf_harmonic(l,m,p.theta,p.phi)*k*Amos_sf_hankel_l_prime(l,k*p.r)*d_r_y(p);     // y-component
+      val[i][2] = d_sh_z(l,m,p)*Amos_sf_hankel_1(l,k*p.r) + gsl_sf_harmonic(l,m,p.theta,p.phi)*k*Amos_sf_hankel_l_prime(l,k*p.r)*d_r_z(p);     // z-component
+    }
+
+  }
+  
+  return val;
+}
+
+
+
+
+
+
+#endif

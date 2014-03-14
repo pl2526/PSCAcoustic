@@ -1,0 +1,398 @@
+#ifndef LEVEL_FMM_H
+#define LEVEL_FMM_H
+
+#include "Box.h"
+#include "Transfer_Function.h"
+#include "Transfer_Vector.h"
+#include "Translation_Function.h"
+#include "Reterpolator.h"
+
+namespace FMM {
+  
+  typedef list<Trans_Vector> TVList;
+  typedef TVList::iterator TVIter;
+  
+  typedef list<Close_Vector> CVList;
+  typedef CVList::iterator CVIter;
+  
+  typedef vector<Transfer_Function*> TFList;
+  typedef TFList::iterator TFIter;
+  
+  typedef vector<Translation_Function*> TLList;
+  typedef TLList::iterator TLIter;
+  
+  typedef list<Box*> BoxSet;
+  typedef BoxSet::iterator BoxIter;
+  
+  template <int DIM>
+    class Level
+    {  
+    public:
+      const static int BRANCH = 1 << DIM;   // The branching factor = 2^DIM
+
+      bool HF;         // Level belongs to HF regime or not
+
+      int L;                   // Max order for spherical wave functions
+      Indexing* index;   //Indexing for spherical wave functions up to order L
+      
+      double boxSize;          // Size of a box this levels contains
+      
+      BoxSet boxList;          // The list of nonempty boxes this level contains
+      
+      Quadrature* quad;        // Quadrature for numerical functions of this level
+      NFunction scratchSpace;  // Scratch space of size quadrature for computation
+      
+      TVList transList;        // The list of transfer vectors
+      CVList closeList;        // The list of close vectors (necessary?)
+      
+      TFList transferFunc;     // The list of transfer functions (necessary?)
+      TLList translationFunc;  // The list of translation functions
+
+      vector< vector<int> > closeIdx;  // The index of the particles associated w/ a close transfer
+      vector<Vec3> closeVec;           // The transfer vectors
+      TFList closeFunc;        // The list of close transfers (only at leaf level)
+      
+      Interpolator* upReterp;
+      Anterpolator* downReterp;
+      
+    public:
+      
+      // Constructors
+    Level( double boxSize_ = 0 ) 
+      : boxSize(boxSize_),
+	quad(NULL), translationFunc(BRANCH),
+	upReterp(NULL), downReterp(NULL) 
+	{
+	  //TODO : This uses a global eps. That's not written well
+	  double d_b = sqrt(3)*boxSize/2.;
+	  double d_h = 3*boxSize;
+
+	  L = L_max(d_b, d_h);
+	  cout << " L : " << L << endl;
+	  cout << "boxSize : " << boxSize_ << endl;
+	  index = new Indexing(L);
+	  
+	  HF = ( boxSize > CUTOFF ) ? true : false;
+	  cout << "HF : " << HF << endl;
+	}
+      
+
+
+      // Destructor
+      ~Level() 
+	{
+	  // Delete Transfer Functions
+	  for( TFIter tfi = transferFunc.begin(); 
+	       tfi != transferFunc.end(); 
+	       ++tfi ) {
+	    Transfer_Function* T = *tfi;
+	    delete T;
+	  }
+
+	  for( int i = 0; i < (int) closeFunc.size(); i++)
+	    delete closeFunc[i];
+
+	  // Delete Translation Functions
+	  for( TLIter tli = translationFunc.begin();
+	       tli != translationFunc.end();
+	       ++tli ) {
+	    Translation_Function* TL = *tli;
+	    delete TL;
+	  }
+	  // Delete Quadrature and Reterps
+	  delete quad;
+	  delete upReterp;
+	  delete downReterp;
+
+	}
+      
+
+
+      //-- Auxilliary functions --//      
+      
+      inline double getBoxSize()
+      {
+	return boxSize;
+      }
+      
+      inline void addBox( Box* b )
+      {
+	boxList.push_back(b);
+      }
+
+      inline NFunction* getScratch()
+      {
+	return &scratchSpace;
+      }
+
+      Indexing* getIndex()
+	{ 
+	  return index; 
+	}
+      
+      inline int getIdxSize()
+      {
+	return index->size();
+      }
+
+      
+      inline void initializeFields()
+      {
+	// Zero the box multipole and locals
+	for( BoxIter bi = boxbegin(); bi != boxend(); ++bi ) {
+	  Box* b = *bi;
+	  if( HF ){
+	    b->makeMultipole( quad->size() );
+	    b->makeLocal( quad->size() );
+	  } else {
+	    b->makeMultipole( index->size() );
+	    b->makeLocal( index->size() );
+	  }
+
+	}
+      }
+
+      inline void zeroFields()
+      {
+	// Zero the box multipole and locals
+	for( BoxIter bi = boxbegin(); bi != boxend(); ++bi ) {
+	  Box* b = *bi;
+	  b->getMultipole().assign( b->getMultipole().size(), 0.);
+	  b->getLocal().assign( b->getLocal().size(), 0.);
+	}
+      }
+
+
+
+
+      //--- Quadrature ---//
+
+      template <typename FUNC>
+	inline void defineQuadrature( FUNC K, double eps)
+	{
+	  // Construct the Quadrature
+	    quad = new Quadrature( K, boxSize, eps );
+	}
+      
+      inline Quadrature* getQuad()
+      {
+	return quad;
+      }
+      
+
+
+
+      //--- Translation and Transfer ---//
+
+      inline void defineTransfers( double eps )
+      {
+	transList.sort();
+	
+	Trans_Vector LastTV;
+	for( TVIter tvi = transList.begin(); tvi != transList.end(); ++tvi ) {
+	  Trans_Vector& tv = *tvi;
+	  
+	  if( LastTV.x != tv.x || LastTV.y != tv.y || LastTV.z != tv.z ) {
+	    // Compute a new Transfer Function
+	    Vec3 r0( tv.x * boxSize, tv.y * boxSize, tv.z * boxSize );
+	    
+	    if( HF ) {
+	      tv.T = new HF_Transfer_Function( quad, r0 );
+	    } else {
+	      tv.T = new Direct_Transfer_Function( index, r0 );
+	    }
+	    
+	  } else {
+	    // This Transfer Function is the same as the last one
+	    tv.T = LastTV.T;
+	  }
+	  
+	  LastTV = tv;
+	}
+      }
+      
+      inline void addTransfer( Box* b1, Box* b2 )
+      {
+	Vec3 r0 = b2->center - b1->center;
+	r0 /= boxSize;
+	r0.x = round(r0.x); r0.y = round(r0.y); r0.z = round(r0.z);
+
+	transList.push_back( Trans_Vector(b1, b2,  r0) );
+	transList.push_back( Trans_Vector(b2, b1, -r0) );
+      }
+      
+
+
+      inline void addClose( Box* b1, Box* b2 )
+      { 
+	closeList.push_back( Close_Vector(b1, b2) );
+      }
+
+      // Define close transfers (only at leaf level)
+      inline void addCloseTransfer( int& idxTo, int& idxFrom, Vec3& r0 )
+      {
+	vector<int> idxVec(2);
+	idxVec[0] = idxTo;
+	idxVec[1] = idxFrom;
+	closeIdx.push_back( idxVec );
+
+	if( CT_PRECOMPUTE ){
+	  Direct_Transfer_Function* closeTransfer = new Direct_Transfer_Function( Index_ptr, r0 );
+	  closeFunc.push_back( closeTransfer );
+	} else {
+	  closeVec.push_back(r0);
+	}
+
+      }
+    
+
+      
+      // Define the translation functions from a lower level
+      inline void defineTranslations(Indexing* pIndex, Indexing* cIndex)
+      {
+	// Depending on BRANCH, construct the translation vectors
+	for( int k = 0; k < BRANCH; ++k ) {
+	  // Generate the kth translation vector
+	  // Could do this alot better with the NTree...
+	  Vec3 r;
+	  if( DIM == 1 ) {
+	    if( k == 0 ) r = Vec3( boxSize/4, 0, 0);
+	    if( k == 1 ) r = Vec3(-boxSize/4, 0, 0);
+	  }
+	  if( DIM == 2 ) {
+	    if( k == 0 ) r = Vec3( boxSize/4, boxSize/4, 0);
+	    if( k == 1 ) r = Vec3( boxSize/4,-boxSize/4, 0);
+	    if( k == 2 ) r = Vec3(-boxSize/4, boxSize/4, 0);
+	    if( k == 3 ) r = Vec3(-boxSize/4,-boxSize/4, 0);
+	  }
+	  if( DIM == 3 ) {
+	    if( k == 0 ) r = Vec3( boxSize/4, boxSize/4, boxSize/4);
+	    if( k == 1 ) r = Vec3( boxSize/4, boxSize/4,-boxSize/4);
+	    if( k == 2 ) r = Vec3( boxSize/4,-boxSize/4, boxSize/4);
+	    if( k == 3 ) r = Vec3( boxSize/4,-boxSize/4,-boxSize/4);
+	    if( k == 4 ) r = Vec3(-boxSize/4, boxSize/4, boxSize/4);
+	    if( k == 5 ) r = Vec3(-boxSize/4, boxSize/4,-boxSize/4);
+	    if( k == 6 ) r = Vec3(-boxSize/4,-boxSize/4, boxSize/4);
+	    if( k == 7 ) r = Vec3(-boxSize/4,-boxSize/4,-boxSize/4);
+	  }
+	  
+
+	  // Construct translation based on frequency regime
+	  if( HF ){
+	    translationFunc[k] = new HF_Translation_Function(r, quad );
+	  } else {
+	    translationFunc[k] = new Direct_Translation_Function(r, pIndex, index, cIndex);
+	  }
+	  
+	}
+      }
+
+
+      // Get the translation function from a child box b
+      // to its parent box in this level
+      inline Translation_Function& getTranslationUp( Box* b )
+      {
+	return *translationFunc[b->n & (BRANCH-1)];
+      }
+      
+      // Get the translation function from a parent box to a child box b
+      // in this level
+      inline Translation_Function& getTranslationDown( Box* b )
+      {
+	return *translationFunc[(b->n & (BRANCH-1)) ^ (BRANCH-1)];
+      }
+      
+
+
+
+      //--- Interpolation ---//
+
+      //TODO: right now, pass 2 arguments and use only one
+      // Define an interpolator from the quadrature of this level
+      // to the quadrature of level qB
+      inline void defineInterp( Quadrature* qB, Indexing* index2 )
+      {
+	upReterp = new Interpolator( quad, qB, index, index2);
+      }
+
+      inline Interpolator* getInterp()
+      {
+	return upReterp;
+      }
+      
+      
+      // Define an anterpolator from the quadrature of this level
+      // to the quadrature of level qb
+      inline void defineAnterp( Quadrature* qb, Indexing* index2 )
+      {
+	downReterp = new Anterpolator( quad, qb, index, index2);
+      }
+      
+      inline Anterpolator* getAnterp()
+      {
+	return downReterp;
+      }
+
+ 
+
+      
+
+      //--- Execution ---//
+      
+      inline void applyTransferFunctions()
+      {
+	for( TVIter tvi = transList.begin(); tvi != transList.end(); ++tvi ) {     
+	  
+	  Transfer_Function* T = tvi->T;
+	  
+	  Box* b1 = tvi->b1;
+	  Box* b2 = tvi->b2;
+	  
+	  // Transfer from box 1(multipole) to box 2(local)
+	  T->Transfer( b2->getLocal(), b1->getMultipole() );
+	  
+	}
+      }
+      
+      
+      inline void applyClose(vector< vector<complex> >& PWE, 
+			      complex transfered[], double kappa )
+      {
+	int N = closeIdx.size();
+	for( int n = 0; n < N; n++ ){
+	  int idxTo = closeIdx[n][0];
+	  int idxFrom = closeIdx[n][1];
+	  vector<complex> vecTo(Isize);
+
+	  // Proceed to transfer
+	  if( CT_PRECOMPUTE ){
+	    closeFunc[n]->Transfer(vecTo, PWE[idxFrom]);
+	  } else {
+	    Direct_Transfer_Function* closeTransfer = new Direct_Transfer_Function( Index_ptr, closeVec[n] );
+	    closeTransfer->Transfer(vecTo, PWE[idxFrom]);
+	    delete closeTransfer;
+	  }
+
+	  // Update expansion
+	  for( int i = 0; i< Isize; i++ )
+	    transfered[idxTo*Isize+i] += vecTo[i];
+
+	}
+
+      }
+      
+      
+      
+      inline BoxIter boxbegin()
+      {
+	return boxList.begin();
+      }
+      
+      inline BoxIter boxend()
+      {
+	return boxList.end();
+      }
+    };
+  
+}
+#endif
