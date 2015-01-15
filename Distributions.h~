@@ -23,6 +23,8 @@ std::vector<Scatterer> ScatInit( int N, complex k, complex k_out );
 std::vector<Pvec> ConcentricSpheres(double R, double r, double d);
 std::vector<Pvec> CylSlab(Pvec a, double r, double R, double h);
 std::vector<Pvec> RandSpherical(double R, double r, double d, Pvec c, double N);
+std::vector<Pvec> RandSphericalXY(double R, double r, double d, Pvec c, double N);
+std::vector<Pvec> RandRectangularXY(double x_dim, double y_dim, double r, double d, Pvec c, double N);
 std::vector<Pvec> RandCubic(double Dx, double Dy, double Dz, double r, double d, Pvec c, double N);
 std::vector<Pvec> SphericalPeriodic(double R, Pvec center, double r, double p);
 std::vector<Pvec> ErgodCavity(double R, double t, Pvec center, double r, double d, double N);

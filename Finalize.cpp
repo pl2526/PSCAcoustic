@@ -1,10 +1,34 @@
+/*
+ *  Finalize.cpp
+ *  PSCAcoustic
+ *
+ *  Post-processing for writing solution to file in 
+ *  standard form.
+ *
+ *
+ *  Copyright (C) 2014 Pierre-David Letourneau
+ *  
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+*/
+
 #ifndef FINALIZE_CPP
 #define FINALIZE_CPP
 
 #include "Finalize.h"
 
 
-void Write_Info(int Proc_Idx, std::string& type,double residual, double relative_residual, double cond, std::string filename){
+void Write_Info(int Proc_Idx, std::string& type,double residual, double relative_residual, double cond, int Niter, std::string filename, complex k_out, complex k_in, int N){
       std::stringstream nProc_str;
       nProc_str << Proc_Idx;
       filename.append(nProc_str.str());
@@ -22,14 +46,14 @@ void Write_Info(int Proc_Idx, std::string& type,double residual, double relative
       Infofile << " Maximum number of iterations :," << MAXITS << endl << endl;
       
       // Background properties
-      Infofile << " Background medium wave numver (K_OUT) :," << std::real(K_OUT) << "," << std::imag(K_OUT) << endl;
+      Infofile << " Background medium wave numver (K_OUT) :," << std::real(k_out) << "," << std::imag(k_out) << endl;
       Infofile << " Background medium density (RHO_OUT) :," << RHO_OUT << endl << endl;
       
       // Scatterer properties
-      Infofile << " Scatterer wave numver (K) :," << std::real(K) << "," << std::imag(K) << endl;
+      Infofile << " Scatterer wave numver (K) :," << std::real(k_in) << "," << std::imag(k_in) << endl;
       Infofile << " Scatterer density (RHO) :," << RHO << endl;
       Infofile << " Scatterer radius (RADIUS) :' ," << RADIUS << endl;
-      Infofile << " Total number of scatterers (NScat) :," << NScat << endl;
+      Infofile << " Total number of scatterers (NScat) :," << N << endl;
       Infofile << " Total number of unknowns :," << NScat*(LMAX+1)*(LMAX+1)  << endl;
       Infofile << " Number of unknowns per scatterer :," << (LMAX+1)*(LMAX+1) << endl << endl;
 
@@ -42,7 +66,8 @@ void Write_Info(int Proc_Idx, std::string& type,double residual, double relative
       // Solution characteristics
       Infofile << " L-S residual :," << std::setprecision(15) << residual << endl;
       Infofile << " L-S relative residual :," << std::setprecision(15) << relative_residual << endl;
-      Infofile << " Approximate condition number :," << std::setprecision(15) << cond << endl << endl;
+      Infofile << " Approximate condition number :," << std::setprecision(15) << cond << endl;
+      Infofile << " Number of iterations :," << Niter << endl << endl;
 
       // TODO: necessary?
       // flags
@@ -83,11 +108,11 @@ void Write_Source( int Proc_Idx, std::vector<IncWave*>& IW, IncWave::Type type, 
   } else if( type == IncWave::Pt ){
 
     Srcfile << "Source type:, Pt" << endl;
-    Srcfile << "Idx , x-amplitude, y-amplitude, z-amplitude, x-location, y-location, z-location" << endl;
+    Srcfile << "Idx , amplitude, x-location, y-location, z-location" << endl;
 
     for( int n = 0; n < (int) IW.size(); n++ ){
       SphericalWave* IW_ = static_cast<SphericalWave*>(IW[n]);
-      Srcfile << n << " , " << IW_->getAmplitude() <<  " , " << IW_->getLocation().x << 
+      Srcfile << n << " , " << std::real(IW_->getAmplitude()) <<  " , " << IW_->getLocation().x << 
 	" , " << IW_->getLocation().y << " , " << IW_->getLocation().z << endl;
     }
   }
@@ -122,7 +147,7 @@ void Write_Solution( int Proc_Idx, Indexing& index, std::vector< std::vector<com
   char *Filename = (char*) filename.c_str();
   ofstream Solfile(Filename, ios::out);
   
-  for( int n = 0; n < NScat; n++ )
+  for( int n = 0; n < (int) u.size(); n++ )
     for( int i = 0; i < (int) index.size(); i++ )
       Solfile << n << ","  << index(i,0) << "," << index(i,1) << "," << std::real(u[n][i]) << "," << std::imag(u[n][i]) << endl;
 

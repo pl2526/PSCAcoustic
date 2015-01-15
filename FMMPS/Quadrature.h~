@@ -62,11 +62,10 @@ namespace FMM {
     // Index maps for rotations and reflections of the quadrature
     std::vector< std::vector<int> > indexMap;
     
-    template <typename FUNC>
-      QuadratureHelm( FUNC K );
+    QuadratureHelm( HelmKernel& K );
 
     // Destructor
-    ~QuadratureHelm() {}
+    ~QuadratureHelm(){}
     
     // Accessors
     inline int size() const { return point.size(); }
@@ -121,10 +120,9 @@ namespace FMM {
     complex k_out;
 
   public:
-    
+
     // Constructor
-    template <typename FUNC>
-      Quadrature_Uniform( FUNC K, double boxSize, double eps, complex k, complex k_out);
+    Quadrature_Uniform(HelmKernel& K, double boxSize, double eps, complex k, complex k_out);
     
     // Destructor
     ~Quadrature_Uniform() {}

@@ -10,6 +10,7 @@
 
 namespace FMM {
 
+  Indexing Transfer_Function::global_index(LMAX);
 
   //---- High-frequency transfer function ----//
   
@@ -73,16 +74,14 @@ namespace FMM {
   
 
   //---- Low-frequency transfer function ----//
-
-  Indexing Direct_Transfer_Function::global_index(LMAX);
   
-  Direct_Transfer_Function::Direct_Transfer_Function( Vec3 r, complex k_out) : Transfer_Function()    
+  Direct_Transfer_Function::Direct_Transfer_Function( Indexing* index, Vec3 r, complex k_out) : Transfer_Function()    
   {
     double rad, theta, phi;
     Cart2Sf(r.x, r.y, r.z, rad, theta, phi);
     
     // Initialize P&S transfer
-    PS_Transfer = new PointAndShoot(rad, k_out, theta, phi, &global_index, &global_index, false);
+    PS_Transfer = new PointAndShoot(rad, k_out, theta, phi, index, index, false);
   }
   
   //Destructor

@@ -1,15 +1,29 @@
-#ifndef DISTRIBUTIONS_CPP
-#define DISTRIBUTIONS_CPP
-
 /*
- *  Distributions.h
- *  PSC
- *
- *  Created by Pierre-David Letourneau on 09/10/13.
- *  Copyright 2011 Stanford University. All rights reserved.
+ *  Districutions.h
+ *  PSCAcoustic
  *
  *  Various routines to generate arrangements of scatterers.
- */
+ *
+ *
+ *  Copyright (C) 2014 Pierre-David Letourneau
+ *  
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+*/
+
+
+#ifndef DISTRIBUTIONS_CPP
+#define DISTRIBUTIONS_CPP
 
 #include "General.h"
 #include "Distributions.h"
@@ -20,11 +34,11 @@ std::vector<Scatterer> ScatInit( int N, complex k, complex k_out ){
   
   std::vector<Scatterer> ScL;
   
-  if( 1 ){
+  if( 0 ){
 
     // Compute center locations
     Pvec CENTER(0.,0.,0. ,Pvec::Cartesian);                                          // Center of cluster
-    std::vector<Pvec> center = RandSpherical(20., RADIUS, D_MIN, CENTER, NScat);    // Random distribution
+    std::vector<Pvec> center = RandSpherical(0.3, RADIUS, D_MIN, CENTER, NScat);    // Random distribution
     
     assert( center.size() == NScat );
 
@@ -40,15 +54,15 @@ std::vector<Scatterer> ScatInit( int N, complex k, complex k_out ){
     
     //Initialize location of scatterers
     
-    Pvec vec0(1., 0., 0., Pvec::Cartesian); 
+    Pvec vec0(0., 0.0, 0.0, Pvec::Cartesian); 
     Scatterer scatterer0(RADIUS, k, k_out, RHO, vec0);
     ScL.push_back(scatterer0);
     
-    /*Pvec vec1(3., -2.5, 0., Pvec::Cartesian); 
+    /*Pvec vec1(0., -0.45, 0., Pvec::Cartesian); 
     Scatterer scatterer1(RADIUS, k, k_out, RHO, vec1);
-    ScL.push_back(scatterer1);
+    ScL.push_back(scatterer1);*/
 
-    Pvec vec2(-3., -2.5, 0, Pvec::Cartesian); 
+    /*Pvec vec2(-3., -2.5, 0, Pvec::Cartesian); 
     Scatterer scatterer2(RADIUS, K, K_OUT, RHO, vec2);
     ScL.push_back(scatterer2);*/
   }
@@ -78,7 +92,7 @@ std::vector<Pvec> RandSpherical(double R, double r, double d, Pvec c, double N){
   srand48(time(0));
   double dist = 0;
   double x,y,z;
-  int maxN = 100*N; //Maximum number of iterations
+  int maxN = 5000*N; //Maximum number of iterations
 
   int n = 0;
   while( n < maxN  &&  (int) array.size() < N )
@@ -122,6 +136,145 @@ std::vector<Pvec> RandSpherical(double R, double r, double d, Pvec c, double N){
   return array;
   
   }
+
+
+std::vector<Pvec> TruncatedSphere(double R, double t, double r, double d, Pvec c, double N, Pvec src_loc, bool rand_flag){
+  // R: radius of sphere
+  // t: distance between center and cut (along y-axis) 
+  // r: radius of the spheres
+  // d: minimum distance allowable between any sphere
+
+  if( rand_flag )
+    srand48(time(0));
+  else
+    srand48(0);
+
+  
+  std::vector<Pvec> array; // Array of center locations
+  double dist = 0;
+  double dist_src = 0;
+  double x,y,z;
+  int maxN = 5000*N; //Maximum number of iterations
+
+  int n = 0;
+  while( n < maxN  &&  (int) array.size() < N )
+    {
+      x = 2*R*drand48() - R;
+      y = 2*R*drand48() - R;
+      z = 2*R*drand48() - R;
+      dist = sqrt( x*x + y*y + z*z );
+      
+
+      
+      if( (dist + r) <= R && y < t){
+	
+	//Check sphere is far enough from others and source
+	bool too_close = false;
+	int i = 0;
+	while( i < (int) array.size() && !too_close ){
+
+	  dist = sqrt( (x-array[i].x)*(x-array[i].x) + 
+		       (y-array[i].y)*(y-array[i].y) + 
+		       (z-array[i].z)*(z-array[i].z) );
+
+	  // Check is sphere is far enough from source 
+	  dist_src = sqrt( (x-src_loc.x)*(x-src_loc.x) + 
+		       (y-src_loc.y)*(y-src_loc.y) + 
+		       (z-src_loc.z)*(z-src_loc.z) );
+
+
+
+	  //cout << "(" << array[i].x << "," << array[i].y << "," << array[i].z << ")" << endl;
+	  //cout << "dist2 : " << dist << endl;
+
+	  if( dist < (2*r+d) || dist_src < (4*r+2.*d))
+	    too_close = true;
+
+	  i++;
+	}
+
+	if( !too_close ){
+	  //cout << "(" << x << "," << y << "," << z << ")" << endl;
+	  Pvec center(x, y, z, Pvec::Cartesian);
+	  array.push_back(c + center);
+	}	
+
+      }
+
+      n++;
+  }
+  
+  return array;
+  
+  }
+
+
+std::vector<Pvec> ErgodicCavity(double R, double t, double thick, Pvec center, double r, double d, double N, Pvec src_loc, bool rand_flag){
+  
+  //if( rand_flag )
+    //srand48(time(0));
+  //else
+    srand48(0);
+
+  //r is the radius of the spheres
+  //d is the std::minimum distance allowable between any sphere
+  
+  std::vector<Pvec> array; // Array of center locations
+  double dist_src = 0;
+  int maxN = 100*N; //Maximum number of iterations
+  int n = 0;
+  while( n < maxN  &&  (int) array.size() < N )
+    {
+
+      std::vector<double> Z(3);
+      Z[0] = (2*R*drand48() - R) + center.x;
+      Z[1] = (2*R*drand48() - R) + center.y;
+
+      // Spheroid
+      //Z[2] = (2*R*drand48() - R) + center.z;
+
+      // Ergodic cylinder
+      Z[2] = (2*thick*drand48() - thick) + center.z;
+
+      //Check sphere is far enough from others
+      bool too_close = false;
+      double dist;
+      int i = 0;
+      // Creates edge
+      double rad = sqrt( (Z[0]-center.x)*(Z[0]-center.x) +
+			 (Z[1]-center.y)*(Z[1]-center.y) );
+      if( Z[1] < t && rad <= R ){
+	while( i < (int) array.size() && !too_close ){
+	  
+	  dist = sqrt( (Z[0]-array[i].x)*(Z[0]-array[i].x) + 
+		       (Z[1]-array[i].y)*(Z[1]-array[i].y) + 
+		       (Z[2]-array[i].z)*(Z[2]-array[i].z) );
+
+	  dist_src = sqrt( (Z[0]-src_loc.x)*(Z[0]-src_loc.x) + 
+			   (Z[1]-src_loc.y)*(Z[1]-src_loc.y) + 
+			   (Z[2]-src_loc.z)*(Z[2]-src_loc.z) );
+
+	  
+	  if( dist < (2*r+d) || dist_src < (2.*r+2.*d) )
+	    too_close = true;
+	  
+	  i++;
+	}
+	
+	if( !too_close ){
+	  Pvec loc(Z[0], Z[1], Z[2], Pvec::Cartesian);
+	  array.push_back(loc);
+	}	
+      }
+
+      n++;
+    }
+  
+  cout << "size : " << array.size() << endl;
+  return array;  
+}
+
+
 
 std::vector<Pvec> RandSphericalXY(double R, double r, double d, Pvec c, double N){
   //r is the radius of the spheres
@@ -176,7 +329,62 @@ std::vector<Pvec> RandSphericalXY(double R, double r, double d, Pvec c, double N
   
   return array;
   
+}
+
+
+std::vector<Pvec> RandRectangularXY(double x_dim, double y_dim, double r, double d, Pvec c, double N){
+  //r is the radius of the spheres
+  //d is the std::minimum distance allowable between any sphere
+  
+  std::vector<Pvec> array; // Array of center locations
+  
+  //srand48(0);
+  srand48(time(0));
+  double dist = 0;
+  double x,y,z;
+  int maxN = 100*N; //Maximum number of iterations
+
+  int n = 0;
+  while( n < maxN  &&  (int) array.size() < N )
+    {
+      x = 2*x_dim*drand48() - x_dim;
+      y = 2*y_dim*drand48() - y_dim;
+      z = 0.;
+      dist = sqrt( x*x + y*y + z*z );
+      //cout << "dist : " << dist << endl;
+      
+      //Check if scatterers is far enough from others
+      bool too_close = false;
+      int i = 0;
+      while( i < (int) array.size() && !too_close ){
+	
+	dist = sqrt( (x-array[i].x)*(x-array[i].x) + 
+		     (y-array[i].y)*(y-array[i].y) + 
+		     (z-array[i].z)*(z-array[i].z) );
+	
+	//cout << "(" << array[i].x << "," << array[i].y << "," << array[i].z << ")" << endl;
+	//cout << "dist2 : " << dist << endl;
+	
+	if( dist < (2*r+d) )
+	  too_close = true;
+	
+	i++;
+      }
+      
+      if( !too_close ){
+	//cout << "(" << x << "," << y << "," << z << ")" << endl;
+	Pvec center(x, y, z, Pvec::Cartesian);
+	array.push_back(c + center);
+      }	
+      
+      
+      n++;
   }
+  
+  return array;
+  
+  }
+
 
 
 
@@ -215,7 +423,7 @@ std::vector<Pvec> SphericalPeriodic(double R, Pvec center, double r, double p){
 //( Used only by ScatInit() )
 // Returns a std::vector of location of sphere randomly located around the origin within
 // a cubic enclosure
-std::vector<Pvec> RandCubic(double Dx, double Dy, double Dz, double r, double d, Pvec c, double N){
+std::vector<Pvec> RandCubic(double Dx, double Dy, double Dz, double r, double d, Pvec c, int N){
   //r is the radius of the spheres
   //d is the std::minimum distance allowable between any sphere
 
@@ -267,9 +475,9 @@ std::vector<Pvec> RandCubic(double Dx, double Dy, double Dz, double r, double d,
       }
 
     if( (int) array.size() == (int) N ) { break; }
-    d *= 0.9;
+    //d *= 0.9;
 
-    cout << "d : " << d << endl;
+    //cout << "d : " << d << endl;
   }
   
   return array;
@@ -437,63 +645,7 @@ std::vector<Pvec> RandBump(double R, double delta, double r, double d, Pvec c, d
 
 
 
-std::vector<Pvec> ErgodCavity(double R, double t, Pvec center, double r, double d, double N){
 
-  srand48(8);
-
-  //r is the radius of the spheres
-  //d is the std::minimum distance allowable between any sphere
-  
-  std::vector<Pvec> array; // Array of center locations
-  int maxN = 100*N; //Maximum number of iterations
-  int n = 0;
-  while( n < maxN  &&  (int) array.size() < N )
-    {
-
-      std::vector<double> Z(3);
-      Z[0] = (2*R*drand48() - R) + center.x;
-      Z[1] = (2*R*drand48() - R) + center.y;
-
-      // Spheroid
-      //Z[2] = (2*R*drand48() - R) + center.z;
-
-      // Ergodic cylinder
-      Z[2] = (2*t*drand48() - t) + center.z;
-
-      //Check sphere is far enough from others
-      bool too_close = false;
-      double dist;
-      int i = 0;
-      // Creates edge
-      double pos = sqrt( (Z[0]-center.x)*(Z[0]-center.x) +
-			 (Z[1]-center.y)*(Z[1]-center.y) +
-			 (Z[2]-center.z)*(Z[2]-center.z) );
-      if( Z[1] < 0 && pos <= R ){
-	while( i < (int) array.size() && !too_close ){
-	  
-	  dist = sqrt( (Z[0]-array[i].x)*(Z[0]-array[i].x) + 
-		       (Z[1]-array[i].y)*(Z[1]-array[i].y) + 
-		       (Z[2]-array[i].z)*(Z[2]-array[i].z) );
-
-	  
-	  if( dist < (2*r+d) )
-	    too_close = true;
-	  
-	  i++;
-	}
-	
-	if( !too_close ){
-	  Pvec loc(Z[0], Z[1], Z[2], Pvec::Cartesian);
-	  array.push_back(loc);
-	}	
-      }
-
-      n++;
-    }
-  
-  cout << "size : " << array.size() << endl;
-  return array;  
-}
 
 std::vector<Pvec> ErgodCavity2(double R, Pvec center, double r, double d, double N){
 

@@ -1,9 +1,35 @@
+/*
+ *  Quadrature.h
+ *  PSCAcoustic
+ *
+ *  Quadrature for High-frequency portion of code
+ *
+ *
+ *  Copyright (C) 2014 Pierre-David Letourneau
+ *  
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+*/
+
+
 #ifndef QUADRATURE_FMM_H
 #define QUADRATURE_FMM_H
 
 #include "General.h"
 #include "Vec3.h"
 #include "HelmholtzUtil.h"
+#include "../Scatterer.h"
+
 
 
 namespace FMM {
@@ -125,19 +151,18 @@ namespace FMM {
     Quadrature_Uniform(HelmKernel& K, double boxSize, double eps, complex k, complex k_out);
     
     // Destructor
-    ~Quadrature_Uniform() {}
+~Quadrature_Uniform() {}
 
-    //----- Auxilliary functions -----//
-    double Gamma( int n, double kb, double A);
-    double Eta( int n, double kb, double theta, double A);
+//----- Auxilliary functions -----//
+double g( int n, double C, double k_out, double r);
+double h( int n, double C, double k_out, double r, double theta);
 
     //----- Functions providing parameters values -----//
-    int get_N_theta( int L, double kappa, double norm_r0, 
-		     double boxSize, double A, double eps );
-    int get_N_phi( double& error, std::vector< std::vector<complex> >& TL, int n, 
-		   int N_phiT, double maxL, double theta, int N_theta, double boxSize,
-		   double A, double eps );
-    
+int get_N_theta( int L, double k_out, double r0, double r, double boxSize, double eps );
+int get_N_phi( std::vector< std::vector<complex> >& TL, 
+		 int n,  int N_phiT, double maxL, double theta, 
+		 int N_theta, double k_out, double r, double boxSize, double eps);
+  
   };
   
   

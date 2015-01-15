@@ -1,30 +1,43 @@
-#ifndef IMAGING_CPP
-#define IMAGING_CPP
-
 /*
  *  Imaging.cpp
- *  PSC
+ *  PSCAcoustic
  *
- *  Created by Pierre-David Letourneau on 11/11/13.
- *  Copyright 2011 Stanford University. All rights reserved.
+ *  Produces image of wave field.
  *
- *  Produce image of wave field
- */
+ *
+ *  Copyright (C) 2014 Pierre-David Letourneau
+ *  
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+*/
 
+
+#ifndef IMAGING_CPP
+#define IMAGING_CPP
 
 #include "Imaging.h"
 
 void Imaging( std::vector<Scatterer>& ScL, IncWave* IW, std::string filename,
 	      std::vector< std::vector<complex> >& u, int idx, int M, double L,
-	      std::vector< std::vector<complex> >* u_in){
+	      std::vector< std::vector<complex> >* u_in, complex k_out, complex k_in){
   std::vector<IncWave*> v(1); v[0] = IW;
-  Imaging(ScL, v, filename, u, idx, M, L, u_in);
+  Imaging(ScL, v, filename, u, idx, M, L, u_in, k_out, k_in);
 }
 
 // TODO: receive normal to plane
 void Imaging( std::vector<Scatterer>& ScL, std::vector<IncWave*>& IW, std::string filename,
 	      std::vector< std::vector<complex> >& u, int idx, int M, double L,
-	      std::vector< std::vector<complex> >* u_in)
+	      std::vector< std::vector<complex> >* u_in, complex k_out, complex k_in)
 {
   cout << "   ***Creating images..." << endl;
   // Create a 2D grid onto which to compute field
@@ -41,27 +54,21 @@ void Imaging( std::vector<Scatterer>& ScL, std::vector<IncWave*>& IW, std::strin
   std::stringstream idx_str;
   idx_str << idx;
 
-  std::string str_x(filename);
-  str_x.append("_xy_");
-  str_x.append(idx_str.str());
-  str_x.append(".csv");
-  char *Str_x = (char*) str_x.c_str();
-  ofstream im_x(Str_x, ios::out);
+  std::string str_Re(filename + "Re_" + idx_str.str() + ".csv");
+  std::string str_Im(filename + "Im_" + idx_str.str() + ".csv");
 
-  std::string str_grid = "grid_";
-  str_grid.append(idx_str.str());
-  str_grid.append(".csv");
-  char *Str_grid = (char*) str_grid.c_str();
-  ofstream grid(Str_grid, ios::out);
-
+  char *Str_Re = (char*) str_Re.c_str();
+  ofstream im_Re(Str_Re, ios::out);
+  char *Str_Im = (char*) str_Im.c_str();
+  ofstream im_Im(Str_Im, ios::out);
 
 
   // TODO: Transfer expansion from all transducers to the origin to obtain single expansion
   for( int i = 0; i < X.size(); i++ ){
-    //cout << "row : " << i << endl;
+    //cout << "row : " << i << " / " << X.size() << endl;
     for( int j = 0; j < X.size(); j++ ){
-      //cout << "col : " << j << endl;
-      Pvec p(0.,X[i],X[j],Pvec::Cartesian);
+      //cout << "col : " << j << " / " << X.size() << endl;
+      Pvec p(X[i],X[j],0.,Pvec::Cartesian);
 
       bool in = false;
       int in_idx = 0;
@@ -76,33 +83,34 @@ void Imaging( std::vector<Scatterer>& ScL, std::vector<IncWave*>& IW, std::strin
 	}
       }
 
-      // Record location of gridpoints
-      grid << X[i] << "," << X[j] << "," << 0. << endl;
-      
       // Evaluate scattered field at point
-
       v_sc = 0.;
       v_in = 0.;
-      if( in && ~(u_in == NULL) ){
-	v_in = Scatterer::Evaluate(p, ScL[in_idx], (*u_in)[in_idx], Bessel);
+      if( in ){
+
+	v_in = Scatterer::Evaluate(p, ScL[in_idx], (*u_in)[in_idx], Bessel, k_in);
 
       } else { // If image point is oustide all scatterers
 	// Scattered wave
-	v_sc = Scatterer::Evaluate(p, ScL, u, Hankel);
+	v_sc = Scatterer::Evaluate(p, ScL, u, Hankel, k_out);
 	
 	// Incoming wave
 	for( int k = 0; k < (int) IW.size(); k++)
-	  v_in = IW[k]->Evaluate(p);
+	  v_in += IW[k]->Evaluate(p);
       }
       
-      im_x << std::setprecision(15) << std::real(v_sc + v_in) << "," << std::setprecision(15) << std::imag(v_sc + v_in) << endl;
+      im_Re << std::setprecision(15) << std::real(v_sc + v_in) << "," ;
+      im_Im << std::setprecision(15) << std::imag(v_sc + v_in) << "," ;
     }
+
+    im_Re << endl;
+    im_Im << endl;
   }
 
 
   // Close files
-  im_x.close();
-  grid.close();
+  im_Re.close();
+  im_Im.close();
   cout << "   ***Creating images: done" << endl;  
 
   return;

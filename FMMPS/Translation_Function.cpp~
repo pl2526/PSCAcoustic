@@ -271,7 +271,6 @@ namespace FMM {
   {
     // Perform translation up
     vec =  T_up->Apply(From, type );
-    //cout << "vec size : " << vec.size() << "to size : " << To.size() << endl;
     assert( vec.size() == To.size() );
     for( int i = 0; i < (int) To.size(); i++)
       To[i] += vec[i];
@@ -282,7 +281,6 @@ namespace FMM {
   {
     // Perform translation down
     vec =  T_down->Apply(From, type );
-    //cout << "Tdown, vec size : " << vec.size() << " to size : " << To.size() << endl;
     assert( vec.size() == To.size() );
     for( int i = 0; i < (int) To.size(); i++)
       To[i] += vec[i];

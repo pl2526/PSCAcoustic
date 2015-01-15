@@ -1,13 +1,28 @@
+/*
+ *  IncWave.cpp
+ *  PSCAcoustic
+ *
+ *  Objects for incoming wave field.
+ *
+ *
+ *  Copyright (C) 2014 Pierre-David Letourneau
+ *  
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+*/
+
 #ifndef INCWAVE_CPP
 #define INCWAVE_CPP
-/*
- *  IncWave.h
- *  PSC
- *
- *  Created by Pierre-David Letourneau on 1/9/11.
- *  Copyright 2011 Stanford University. All rights reserved.
- *
- */
 
 #include "IncWave.h"
 
@@ -56,8 +71,10 @@ complex SphericalWave::Evaluate(Pvec& p){
   complex val = 0;
   Pvec v = p-loc;
 
-  if( v.r < 1e6 )
+  if( v.r < 1e6 ){
     val = strength*1./(4*PI*v.r)*exp(k_out*CI*v.r);
+    //cout << "val : " << K_OUT/(4*PI)*CI * gsl_sf_hankel_1(0, std::real(k_out)*v.r) << " : " << 1./(4*PI*v.r)*exp(k_out*CI*v.r) << " : " <<  std::abs( K_OUT/(4*PI)*CI * gsl_sf_hankel_1(0, std::real(k_out)*v.r) - 1./(4*PI*v.r)*exp(k_out*CI*v.r) ) << endl;
+  }
   else if( v.r >= 1e6 ){
     double r;
     ( loc.r > p.r ) ? r = loc.r : r = p.r;

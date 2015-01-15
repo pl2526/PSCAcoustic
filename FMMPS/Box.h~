@@ -35,7 +35,6 @@ namespace FMM {
     
     //This should set the size of the expansion only
     inline void makeMultipole( int size ) {
-      cout << "M size : " << size << endl;
       M.resize( size );
     }
     

@@ -1,0 +1,66 @@
+
+/*
+ *  Indexing.cpp
+ *  PSCAcoustic
+ *
+ *  Linear indexing for spherical wave functions and spherical harmonics.
+ *
+ *
+ *  Copyright (C) 2014 Pierre-David Letourneau
+ *  
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+*/
+
+
+#ifndef INDEXING_CPP
+#define INDEXING_CPP
+
+
+#include <vector>
+#include <cmath>
+#include <complex>  
+
+typedef std::complex<double> complex;
+
+#include "Indexing.h"
+
+
+// TODO: Improve efficiency
+
+// Constructors
+Indexing::Indexing( int lmax ) { Compute(lmax); }
+
+void Indexing::Compute( int lmax ) { 
+  int Max =  (lmax+2)*(lmax) + 1; //Total number of harmonics of order <=lstd::max
+  //std::vector< std::vector<int> > v(Max, std::vector<int>(2) );
+  Index.resize(Max);
+  
+  int i;
+  for ( int l=0 ; l<=lmax ; l++){
+    for ( int m=-l ; m<=l ; m++){
+      i = std::max((l+1)*(l-1)+1 , 0) + (m+l);
+
+      Index[i].resize(2);
+      Index[i][0] = l;
+      Index[i][1] = m;
+      //v[i][0] = l;
+      //v[i][1] = m;
+    }
+  }
+  
+  //Index = v;
+}
+
+
+#endif

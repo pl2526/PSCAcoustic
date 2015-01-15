@@ -1,21 +1,29 @@
-#ifndef SCATTERER_H
-#define SCATTERER_H
-
 /*
  *  Scatterer.h
- *  PSC
+ *  PSCAcoustic
  *
- *  Created by Pierre-David Letourneau on 1/9/11.
- *  Copyright 2011 Stanford University. All rights reserved.
+ *  Objects describing scatterers.
  *
- *  This file deals with everything pertaining to a given scatterer:
- *  among other things, its T-matrix and local multipole expansion.
  *
- *  A scatterer object has physical properties, a location in space, a T-matrix
- *  that allows to compute its scattered field given the incostd::ming fiels and a 
- *  scattered expansion.
- *
- */
+ *  Copyright (C) 2014 Pierre-David Letourneau
+ *  
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+*/
+
+
+#ifndef SCATTERER_H
+#define SCATTERER_H
 
 #include "Constants.h"
 #include "Coordinates.h"
@@ -41,7 +49,7 @@ public:
 
   // Constructors
   Scatterer(){}  // Empty constructor
-  Scatterer( double radius_, complex  k_, complex k_out_, double rho_, Pvec& location_ );
+  Scatterer( double radius_, complex  k_, complex k_out_, double rho_, Pvec& location_, int flag = 0);
   
   // Destructor
   ~Scatterer(){}
@@ -49,14 +57,14 @@ public:
 
 
   // T-matrix utilities
-  static void TMconstruct(std::vector<complex>& TM, complex  k, complex  k_out,  double r, double rho); // Compute entries
+  static void TMconstruct(std::vector<complex>& TM, complex  k, complex  k_out,  double r, double rho, int flag); // Compute entries
   void TM_Apply( std::vector<complex>& incoming);  // Apply T-matrix (in-place)
+  static complex  Mie(complex  k, complex  k_out, double radius, double rho, int flag, int l, int m = 0);
+  static complex Mie_in(complex  k, complex  k_out, double radius, double rho, double rho_out, int l); // T-matrix coefficients for inside field
 
   // Evaluate VSWF expansion with center c at point p 
-  static complex Evaluate(Pvec& p, Scatterer& S, std::vector<complex>& a, SWF_Type type, complex k_out = K_OUT);
-  static complex Evaluate(Pvec& p, std::vector<Scatterer>& ScL, std::vector< std::vector<complex> >& a, SWF_Type type, complex k_out = K_OUT);
-  //static complex FF_Evaluate(Pvec& p, std::vector<Scatterer>& ScL, std::vector< std::vector<complex> >& a, SWF_Type type);
-  //static std::vector<complex> Evaluate(Pvec& p, Pvec& c, std::vector<complex>& a, ECC::type Type);
+  static complex Evaluate(Pvec& p, Scatterer& S, std::vector<complex>& a, SWF_Type type, complex wave_number);
+  static complex Evaluate(Pvec& p, std::vector<Scatterer>& ScL, std::vector< std::vector<complex> >& a, SWF_Type type, complex wave_number);
   
   // Accessors
   inline std::vector<complex> getTMatrix() { return TM; }

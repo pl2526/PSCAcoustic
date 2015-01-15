@@ -1,20 +1,29 @@
-#ifndef SCATTERER_CPP
-#define SCATTERER_CPP
 /*
  *  Scatterer.cpp
- *  PSC
+ *  PSCAcoustic
  *
- *  Created by Pierre-David Letourneau on 1/9/11.
- *  Copyright 2011 Stanford University. All rights reserved.
+ *  Objects describing scatterers.
  *
- *  This file deals with everything pertaining to a given scatterer:
- *  among other things, its T-matrix and local multipole expansion.
  *
- *  A scatterer object has physical properties, a location in space, a T-matrix
- *  that allows to compute its scattered field given the incostd::ming fiels and a 
- *  scattered expansion.
- *
- */
+ *  Copyright (C) 2014 Pierre-David Letourneau
+ *  
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+*/
+
+
+#ifndef SCATTERER_CPP
+#define SCATTERER_CPP
 
 #include <complex>  
 #include <vector>  
@@ -31,10 +40,10 @@ typedef std::complex<double> complex;
 Indexing Scatterer::global_index(LMAX);
 
 // Constructor
-Scatterer::Scatterer( double radius_, complex  k_, complex k_out_, double rho_, Pvec& location_ ) : radius(radius_), k(k_), k_out(k_out_), rho(rho_), location(location_)
+Scatterer::Scatterer( double radius_, complex  k_, complex k_out_, double rho_, Pvec& location_, int flag) : radius(radius_), k(k_), k_out(k_out_), rho(rho_), location(location_)
 {
   TM.resize(LMAX+1);
-  TMconstruct(TM, k, k_out, radius, rho);  // Construct T-matrix
+  TMconstruct(TM, k, k_out, radius, rho, flag);  // Construct T-matrix
 } 
 
 
@@ -77,49 +86,59 @@ void Scatterer::copy(Scatterer& scat){
 
 
 // Compute entries of T-matrix
-static complex  Mie(complex  k, complex  k_out, double radius, double rho, int l, int m = 0){
+complex  Scatterer::Mie(complex  k, complex  k_out, double radius, double rho, int flag, int l, int m){
     complex  mie;
+
+    //cout << "flag : " << flag << endl;
 
     // TODO : Check rh_out
     complex  arg_in_C = k * radius;
     complex  arg_out_C = k_out * radius;
     complex  gamma = k/k_out * RHO_OUT/rho;
-    
-    // Penetrable sphere (w/ damping)
-    complex  numerator = gamma * Amos_sf_bessel_jl(l, arg_out_C) * Amos_sf_bessel_jl_prime(l, arg_in_C)
-      - Amos_sf_bessel_jl_prime(l, arg_out_C) * Amos_sf_bessel_jl(l, arg_in_C);
-    complex  denominator = Amos_sf_hankel_l_prime(l, arg_out_C) * Amos_sf_bessel_jl(l, arg_in_C)
-      - gamma * Amos_sf_hankel_1(l, arg_out_C) * Amos_sf_bessel_jl_prime(l, arg_in_C);
-    
-    mie = numerator / denominator;
-  
 
-    //Sound-hard sphere (Martin, p.132)
-    //mie = -Amos_sf_bessel_jl_prime(l, arg_out_C) / Amos_sf_hankel_l_prime(l, arg_out_C);
-
-    //Sound-soft sphere
-    //mie = -Amos_sf_bessel_jl(l, arg_out_C) / Amos_sf_hankel_1(l, arg_out_C);
-
-
-    //Static
-    /*  if( l == 0 )
+    if( flag == 0 ){
+      // Penetrable sphere (w/o damping)
+      complex  numerator = gamma * Amos_sf_bessel_jl(l, arg_out_C) * Amos_sf_bessel_jl_prime(l, arg_in_C)
+	- Amos_sf_bessel_jl_prime(l, arg_out_C) * Amos_sf_bessel_jl(l, arg_in_C);
+      complex  denominator = Amos_sf_hankel_l_prime(l, arg_out_C) * Amos_sf_bessel_jl(l, arg_in_C)
+	- gamma * Amos_sf_hankel_1(l, arg_out_C) * Amos_sf_bessel_jl_prime(l, arg_in_C);
+      
+      mie = numerator / denominator;   
+    } else if( flag == 1 ){
+      //Sound-hard sphere (Martin, p.132)
       mie = -Amos_sf_bessel_jl_prime(l, arg_out_C) / Amos_sf_hankel_l_prime(l, arg_out_C);
-    else
+    } else if (flag == 2 ){
+      //Sound-soft sphere
       mie = -Amos_sf_bessel_jl(l, arg_out_C) / Amos_sf_hankel_1(l, arg_out_C);
-    */
+    } else if (flag == 3 ){
+      //Static
+      if( l == 0 )
+	mie = -Amos_sf_bessel_jl_prime(l, arg_out_C) / Amos_sf_hankel_l_prime(l, arg_out_C);
+      else
+	mie = -Amos_sf_bessel_jl(l, arg_out_C) / Amos_sf_hankel_1(l, arg_out_C);
+    }
 
     return mie;
     
   }
 
-void Scatterer::TMconstruct(std::vector<complex>& TM, complex  k, complex  k_out,  double r, double rho){
+
+complex Scatterer::Mie_in(complex  k, complex  k_out, double radius, double rho, double rho_out, int l){
+  double kappa = rho / rho_out;
+  complex mie_in = -k_out * radius*radius * CI * ( k_out*Amos_sf_hankel_l_prime(l, k_out*radius) * Amos_sf_bessel_jl(l, k*radius)
+						   - k/kappa * Amos_sf_hankel_1(l, k_out*radius) * Amos_sf_bessel_jl_prime(l, k*radius) );
+  
+  return mie_in;  
+}
+
+void Scatterer::TMconstruct(std::vector<complex>& TM, complex  k, complex  k_out,  double r, double rho, int flag){
   
   for ( int l=0 ; l < (int) TM.size() ; l++)
     {
       if( l != 0 && std::abs(TM[l-1]) < 1e-20 ){
 	TM[l] = 0.; 
       }else{
-	TM[l] = Mie(k, k_out, r, rho, l);
+	TM[l] = Mie(k, k_out, r, rho, flag, l);
       }
       //cout << "T-matrix : " << TM[l] << endl;
     }
@@ -129,21 +148,24 @@ void Scatterer::TMconstruct(std::vector<complex>& TM, complex  k, complex  k_out
 
 
 
-complex Scatterer::Evaluate(Pvec& p, Scatterer& S, std::vector<complex>& a, SWF_Type type, complex k_out){
+complex Scatterer::Evaluate(Pvec& p, Scatterer& S, std::vector<complex>& a, SWF_Type type, complex wave_number){
   
   complex val = 0;
   Pvec q = p-S.location;
   Pvec loc = S.location;
   
-  if( type == Bessel ){
-    
+  if( type == Bessel ){   
+    complex k = wave_number;
+
     for( int i = 0; i < (LMAX+1)*(LMAX+1); i++ ){
       int l = global_index(i,0);
       int m = global_index(i,1);
       
-      val += a[i] * gsl_sf_harmonic(l, m, q.theta, q.phi) * Amos_sf_bessel_jl(l, K*q.r);
+      val += a[i] * gsl_sf_harmonic(l, m, q.theta, q.phi) * Amos_sf_bessel_jl(l, k*q.r);
     }
   }else if( type == Hankel ) {
+    complex k_out = wave_number;
+
     for( int i = 0; i < (LMAX+1)*(LMAX+1); i++ ){
       int l = global_index(i,0);
       int m = global_index(i,1);
@@ -165,38 +187,15 @@ complex Scatterer::Evaluate(Pvec& p, Scatterer& S, std::vector<complex>& a, SWF_
   return val;
 }
 
-complex Scatterer::Evaluate(Pvec& p, std::vector<Scatterer>& ScL, std::vector< std::vector<complex> >& a, SWF_Type type, complex k_out){
+complex Scatterer::Evaluate(Pvec& p, std::vector<Scatterer>& ScL, std::vector< std::vector<complex> >& a, SWF_Type type, complex wave_number){
   assert( ScL.size() == a.size() );
   
   complex val = 0;
   for( int n = 0; n < ScL.size(); n++ )
-    val += Scatterer::Evaluate(p, ScL[n], a[n], type, k_out);
+    val += Scatterer::Evaluate(p, ScL[n], a[n], type, wave_number);
 
   return val;
 }
-
-/*complex Scatterer::FF_Evaluate(Pvec& p, std::vector<Scatterer>& ScL, std::vector< std::vector<complex> >& a, SWF_Type type){
-  assert( ScL.size() == a.size() );
-  
-  complex val = 0;
-  for( int n = 0; n < ScL.size(); n++ ){
-    Pvec loc = ScL[n].location;
-    Pvec q = p-loc;
-
-      for( int i = 0; i < (LMAX+1)*(LMAX+1); i++ ){
-	int l = global_index(i,0);
-	int m = global_index(i,1);
-	
-	val += 1./(K_OUT*pow(CI, l+1.)) * a[n][i] * gsl_sf_harmonic(l, m, q.theta, q.phi);
-      }
-      
-      val *= exp(-k_out*CI*(p.x*(loc.x/loc.r) + p.y*(loc.y/loc.r) + p.z*(loc.z/loc.r)) )
-	* exp(k_out*CI*loc.r)/loc.r;
-  }
-
-  return val;
-}
-*/
 
 
 

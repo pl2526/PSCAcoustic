@@ -1,8 +1,30 @@
 #ifndef LEVEL_FMM_CPP
 #define LEVEL_FMM_CPP
 
+/*
+ *  Level.cpp
+ *  PSCAcoustic
+ *
+ *  Objects needed at each level of the FMM tree
+ *
+ *
+ *  Copyright (C) 2014 Pierre-David Letourneau
+ *  
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+*/
+
 #include "Level.h"
-//#include "L_choice.h"
 
 namespace FMM {
 
@@ -80,18 +102,17 @@ namespace FMM {
   
   //-- Auxilliary functions --//      
   
-  void Level::setL()
+  void Level::setL(double eps, double r, complex k, complex k_out)
   {
 
-    // TODO: C_L and C_T should lead to different L. Currently problematic. Must fix static S_Rotation
-    if( !HF ){
-      double A = 1.;
-      L =  L_max_level(boxSize, A, std::abs(K_OUT), 35);
-    } else {
-      L = 0;
-    }
+
+    // TODO: PASS RIGHT K
+    L =  L_max_level(boxSize, eps, r, K, k_out);
+
     
-    index = new Indexing(L);
+    if( !HF )
+      index = new Indexing(L);
+
     cout << " level L : " << L << endl;
   }
   
@@ -131,7 +152,7 @@ namespace FMM {
   void Level::defineQuadrature( HelmKernel KERNEL, double eps)
   {
     // Construct the Quadrature
-    quad = new Quadrature(KERNEL, boxSize, eps, k, k_out); 
+    quad = new Quadrature(KERNEL, boxSize, eps, k, k_out);
   }
   
   

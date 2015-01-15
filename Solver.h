@@ -1,21 +1,32 @@
-#ifndef SOLVER_H
-#define SOLVER_H
-
 /*
  *  Solver.h
- *  PSC
+ *  PSCAcoustic
  *
- *  Created by Pierre-David Letourneau on 3/6/11.
- *  Copyright 2011 Stanford University. All rights reserved.
+ *  Iterative solver using Krylov subspace method
  *
- *  Iterative linear solver implementation 
- *  through PETSc library.
- */
+ *
+ *  Copyright (C) 2014 Pierre-David Letourneau
+ *  
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+*/
+
+#ifndef SOLVER_H
+#define SOLVER_H
 
 #include <vector>
 #include <complex>
 #include <iostream>
-//#include <mpi.h>
 
 #include "Coordinates.h"
 #include "IncWave.h"
@@ -24,9 +35,10 @@
 #include "PSCEnv.h"
 
 
-#include "./Eigen/Dense"
+#include "./Aux/Eigen/Dense"
 
 using namespace Eigen;
+
 
 class Solver
 {
@@ -50,7 +62,7 @@ void RHSInit(IncWave* IW, std::vector<Scatterer>& ScL, std::vector< std::vector<
 
 // Solution of the linear system
  void Solve(PSC_Env& PSC_env, std::vector<Scatterer>& ScL, std::vector< std::vector<complex> >& RHS, 
-	    std::vector< std::vector<complex> >& u,  double& res, double& rel_res, double& cond );
+	    std::vector< std::vector<complex> >& u,  double& res, double& rel_res, double& cond, int& Niter, int idx = 0  );
 
 };
 

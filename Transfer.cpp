@@ -18,21 +18,23 @@
 
 
 //Constructor
-Transfer::Transfer( int nLevels, double eps, complex  k_out_, std::vector<Scatterer>& ScL) : k_out(k_out_)
+Transfer::Transfer( int nlevels, double eps, double r, complex k_in, complex  k_out_, std::vector<Scatterer>& ScL) : k_out(k_out_)
 {
   
   // set wave number for Helmholtz kernel
   KERNEL.kappa = k_out;
   
-  p.resize(NScat);
-  for( int i = 0; i < NScat; i++ ){
+  p.resize(ScL.size());
+  for( int i = 0; i < (int) ScL.size(); i++ ){
     FMM::Vec3 FMMVec( ScL[i].getLocation().x, ScL[i].getLocation().y, ScL[i].getLocation().z );
     p[i] =  FMMVec;
   }
   
+ cout << "foo1" << endl;
+
   //Build FMM environment (only for multiple scatterers)
-  if( FAST_TRANSFER && NScat > 1 ){
-    MLFMMEnv = new FMM::MLFMM_Env(KERNEL, k_out, p, ScL, nLevels, eps);
+  if( FAST_TRANSFER && p.size() > 1 ){
+    MLFMMEnv = new FMM::MLFMM_Env(KERNEL, r, k_in, k_out, p, ScL, nlevels, eps);
   } else {
     //TODO : Need to take inc wave into consideration...
     FMM::S_Rotation::S_Init( 50 );
@@ -43,7 +45,7 @@ Transfer::Transfer( int nLevels, double eps, complex  k_out_, std::vector<Scatte
 
 //Destructor
 Transfer::~Transfer(){
-  if( FAST_TRANSFER && NScat > 1 ){
+  if( FAST_TRANSFER && p.size() > 1 ){
     delete MLFMMEnv;
     MLFMMEnv = NULL;
   } else {
@@ -56,7 +58,7 @@ Transfer::~Transfer(){
 // void execute( const complex  outgoing[], complex  transfered[], FMM::Type type)
 void Transfer::execute( const std::vector< std::vector<complex > >& PWE, std::vector< std::vector<complex > >& T_PWE)
 {
-  if( NScat > 1 )
+  if( p.size() > 1 )
     MLFMMEnv->execute( PWE, T_PWE, k_out, FMM::FORWARD);
 }
 

@@ -1,3 +1,27 @@
+/*
+ *  Constants.h
+ *  PSCAcoustic
+ *
+ *  All sorts of static constants.
+ *
+ *
+ *  Copyright (C) 2014 Pierre-David Letourneau
+ *  
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+*/
+
+
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 
@@ -34,11 +58,11 @@ const bool FAST_TRANSFER = true;   // Perform transfer using fast algorithm or n
 const int verbose = 2;
 
 // KSP solver (PetSc)
-const double RTOL = 1e-11;
-const double ATOL = 1e-13;
+const double RTOL = 1e-5;
+const double ATOL = 1e-14;
 const double DTOL = 1e5;
-const int MAXITS = 200;
-const int K_LS = 5;
+const int MAXITS = 650;
+const int K_LS = 20;
 
 // Background properties
 const double OMEGA = 1.;   // Angular frequency (Hz)
@@ -49,23 +73,23 @@ const complex K_OUT = 2*PI*OMEGA/C_OUT;    // Longitudinal wave number
 
 
 // Scatterers properties
-const int NScat = 1000;     // Total number of scatterers (set in PSCEnv.h)
+const int NScat = 2000;     // Total number of scatterers (set in PSCEnv.h)
 
-const double RADIUS = 0.00001;//0.4;
+const double RADIUS = 0.0053;
 const double D = 1.;               // Diameter of computational domain
 const double D_MIN = RADIUS * 0.5;
 
 // *** CURRENTLY NO LAME CTS for scatterers; assumed rigid
 
-const double RHO = 5;//1.05;//5.; // Density 
-const double C = 0.11;//0.85;//0.11;    // Longitudinal velocity
+const double RHO = 0.2; // Density 
+const double C = 0.1;    // Longitudinal velocity
 const complex K = 2*PI*OMEGA/C;    // Longitudinal wave number
 
 
 
 // Parameters for FMM
 const int nLevels = 3;      // Number of levels in FMM (Should be >= 3)
-const double EPS = 1e-12;          // Desired accuracy for FMM
+const double EPS = 1e-6;          // Desired accuracy for FMM
 
 
 const double CUTOFF_SIZE = 2. * C_OUT/OMEGA;   // Cutoff boxsize (in number of wavelengths) for interface between low- and high-frequency regimes
@@ -73,7 +97,7 @@ const double CUTOFF_SIZE = 2. * C_OUT/OMEGA;   // Cutoff boxsize (in number of w
 
 
 // TODO: SHOULD BE OBTAINED FROM NUMERICAL ANALYSIS
-const int LMAX = 0;//6;//14;//10;        // Maximum degree for representation of Cartesian coordinates in Spherical Wave Functions
+const int LMAX = 1;        // Maximum degree for representation of Cartesian coordinates in Spherical Wave Functions
 
 
 enum SWF_Type{Hankel, Bessel};

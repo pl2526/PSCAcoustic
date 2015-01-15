@@ -5,9 +5,8 @@
  *  Created by Pierre-David Letourneau on 1/9/11.
  *  Copyright 2011 Stanford University. All rights reserved.
  *
- *  Implementation of the transfer pass; to transfer a given
- *  field expansion (in spherical harmonics) from one center 
- *  to a different center of expansion
+ *  Implementation of the transfer operator
+ *  for two different speed of propagation.
  *
  */
 
@@ -16,22 +15,23 @@
 
 #include "./FMMPS/General.h"
 #include "./FMMPS/MLFMM_Env.h"
+
+// Transfer is oblivious to the fact that the speed of sound is different for different kinds of waves
   
 class Transfer
 {
 
   //Objects needed by FMM
-  FMM::HelmKernel KERNEL;
-  FMM::MLFMM_Env<FMM::HelmKernel, DIM> *MLFMMEnv;
+  FMM::HelmKernel KERNEL;    // Longitudinal waves
+  FMM::MLFMM_Env *MLFMMEnv;
 
   std::vector<FMM::Vec3> p;
-  complex  k_l_out;
-  complex  k_t_out;
+  complex  k_out;
 
  public:
   
   //Constructor
-  Transfer( int nLevels, double eps, complex  k_l_out_, complex k_t_out_, std::vector<Scatterer>& ScL);
+  Transfer( int nLevels, double eps, complex  k_out, std::vector<Scatterer>& ScL);
 
   //Destructor
   ~Transfer();

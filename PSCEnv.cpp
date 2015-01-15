@@ -14,12 +14,15 @@
 #include "PSCEnv.h"
 
 
-//Indexing PSC_Env::global_index(LMAX);
+// TODO: Merge Transfer and PSC env
+// TODO: nLevels should be passed
 
-void PSC_Env::Construct( complex k_out_, std::vector<Scatterer> ScL_ )
+void PSC_Env::Construct( int nlevels_, double r, complex k_in, complex k_out_, std::vector<Scatterer> ScL_ )
 {
-  // Wave numbers
-  k_out = k_out_;  
+  nlevels = nlevels_;
+  k_out = k_out_;
+  cout << "nlevels : " << nlevels << endl;
+
 
   // TODO: streamline. Really needed?
   // Change format for the list of scatterers
@@ -28,7 +31,7 @@ void PSC_Env::Construct( complex k_out_, std::vector<Scatterer> ScL_ )
     ScL[i].copy(ScL_[i]);
   
   // Build transfer operator
-  transfer = new Transfer(nLevels, eps, k_out, ScL);
+  transfer = new Transfer(nlevels, eps, r, k_in, k_out, ScL);
 }
 
 // Safe releasing of memory

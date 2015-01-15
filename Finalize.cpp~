@@ -5,8 +5,6 @@
 
 
 void Write_Info(int Proc_Idx, std::string& type,double residual, double relative_residual, double cond, std::string filename){
-
-  //std::string filename(INFO_PREFIX);
       std::stringstream nProc_str;
       nProc_str << Proc_Idx;
       filename.append(nProc_str.str());

@@ -1,4 +1,0 @@
-PSCAcoustic
-===========
-
-PSC Acoustic

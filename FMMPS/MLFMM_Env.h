@@ -1,3 +1,27 @@
+/*
+ *  MLFMM_Env.h
+ *  PSCAcoustic
+ *
+ *  Multi-level FMM environment
+ *
+ *
+ *  Copyright (C) 2014 Pierre-David Letourneau
+ *  
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+*/
+
+
 #ifndef MLFMM_Env_FMM_H
 #define MLFMM_Env_FMM_H
 
@@ -8,10 +32,6 @@
 #include "../Scatterer.h"
 #include "../Indexing.h"
 
-
-/*
- * A class to store MLFMM data which should be reused between iterations
- */
 
 namespace FMM {
   
@@ -26,6 +46,8 @@ namespace FMM {
     static Indexing global_index;
     HelmKernel K;
     complex k_out;
+    complex k_in;
+    std::vector<Scatterer> ScL;
     
     std::vector<Leaf_Translation_Function*> leaf_Translation;
     std::vector<Vec3> sourcefield;
@@ -42,7 +64,7 @@ namespace FMM {
     
     // Constructor
     // TODO : Should pass ScL by reference but need to be constant...
-    MLFMM_Env( HelmKernel K_, complex k_out_, std::vector<Vec3> p, std::vector<Scatterer> ScL, int levels_, double eps);
+    MLFMM_Env( HelmKernel K, double r, complex k_in, complex k_out, std::vector<Vec3> p, std::vector<Scatterer> ScL, int levels_, double eps);
     
     // Destructor
     ~MLFMM_Env();

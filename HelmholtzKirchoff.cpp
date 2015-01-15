@@ -74,9 +74,18 @@ int main(int argc,char **args)
   Indexing Index(LMAX);
 
   // Construct scatterers
-  cout << "***Building scatterers..." << endl;
-  std::vector<Scatterer> ScL = ScatInit(NScat, K, K_OUT );
-  cout << "***Building scatterers: done" << endl << endl;
+  cout << "***Building scatterers..." ;
+  std::vector<Scatterer> ScL;
+  Pvec center(0.,0.,0. ,Pvec::Cartesian);                                          // Center of cluster
+  std::vector<Pvec> scat_loc = RandSpherical(20., RADIUS, D_MIN, center, NScat);    // Random distribution
+ assert( scat_loc.size() == NScat );
+ 
+ // Construct scatterers
+ for( int n = 0; n < NScat; n++ ){
+   Scatterer scatterer(RADIUS, K, K_OUT, RHO, scat_loc[n]);
+   ScL.push_back(scatterer);
+ }
+ cout << "* Done" << endl << endl;
 
   // Construct PSC environment
   cout << "***Constructing environment..." << endl;
@@ -115,7 +124,7 @@ int main(int argc,char **args)
   
   // Write information about problem to file
   cout << "   ***Writing to file..." << endl;
-  std::string filename_forward("Acoustic_HK_forward_LAR_N_XY");
+  std::string filename_forward("Acoustic_HK_forward_LAR_N_YZ");
   Write_Info(Proc_Idx, src_type, res, rel_res, cond, filename_forward);
   Write_Source(Proc_Idx, IW, IncWave::Pt, filename_forward);
   Write_Location(Proc_Idx, ScL, filename_forward);
@@ -159,7 +168,7 @@ int main(int argc,char **args)
       Pvec p(R, theta[i_t], phi[i_p], Pvec::Spherical);
 
       // Evaluate expansions
-      src_rv[k] = w_t[i_t]*w_p[i_p] * std::conj(Scatterer::Evaluate(p, ScL, u, Hankel) + IW->Evaluate(p));
+      src_rv[k] = w_t[i_t]*w_p[i_p] * std::conj(Scatterer::Evaluate(p, ScL, u, Hankel,K_OUT) + IW->Evaluate(p));
       //src_rv[k] = w_t[i_t]*w_p[i_p] * std::conj( IW->Evaluate(p) );
       //cout << "src_rv : " <<  std::conj( IW->Evaluate(p)) << endl;
 
@@ -197,7 +206,7 @@ int main(int argc,char **args)
 
   // Write information about problem to file
   cout << "   ***Writing to file..." << endl;
-  std::string filename_reverse("Acoustic_HK_reverse_LAR_N_XY");
+  std::string filename_reverse("Acoustic_HK_reverse_LAR_N_YZ");
   Write_Info(Proc_Idx, src_type, res, rel_res, cond, filename_reverse);
   Write_Source(Proc_Idx, IW_rv, IncWave::Pt, filename_reverse);
   Write_Location(Proc_Idx, ScL, filename_reverse);
@@ -227,11 +236,11 @@ int main(int argc,char **args)
   complex v_sc_in;
   complex v_rv_in;
 
-  std::string str("Acoustic_Im_forward_Test_LAR_N_XY.csv");
+  std::string str("Acoustic_Im_forward_Test_LAR_N_YZ.csv");
   char *Filename = (char*) str.c_str();
   ofstream im_f(Filename, ios::out);
  
-  str = "Acoustic_Im_reverse_Test_LAR_N_XY.csv";
+  str = "Acoustic_Im_reverse_Test_LAR_N_YZ.csv";
   Filename = (char*) str.c_str();
   ofstream im_rv(Filename, ios::out);
 
@@ -273,7 +282,7 @@ int main(int argc,char **args)
       v_sc_in = 0.;
       if( !too_close ){
 	v_sc_in = IW->Evaluate(p);
-	v_sc = Scatterer::Evaluate(p, ScL, u, Hankel);
+	v_sc = Scatterer::Evaluate(p, ScL, u, Hankel, K_OUT);
       }
       im_f << std::setprecision(15) << std::real(v_sc + v_sc_in) << "," << std::setprecision(15) << std::imag(v_sc + v_sc_in) << endl;
       //im_f << std::setprecision(15) << std::real( v_sc_in) << "," << std::setprecision(15) << std::imag( v_sc_in) << endl;
@@ -287,7 +296,7 @@ int main(int argc,char **args)
 	  v_rv_in += v;
 	}
 
-	v_rv = Scatterer::Evaluate(p, ScL, u_rv, Hankel);
+	v_rv = Scatterer::Evaluate(p, ScL, u_rv, Hankel, K_OUT);
       }
       //im_rv << std::setprecision(15) << std::real(v_rv_in) << "," << std::setprecision(15) << std::imag(v_rv_in) << endl;
       im_rv << std::setprecision(15) << std::real(v_rv + v_rv_in) << "," << std::setprecision(15) << std::imag(v_rv + v_rv_in) << endl;

@@ -3,9 +3,7 @@
 
 #include "Quadrature.h"
 #include "SphericalHarmonicsTransform.h"
-//#include "NFunction.h"
 #include "General.h"
-//#include "Level.h"
 
 namespace FMM {
   

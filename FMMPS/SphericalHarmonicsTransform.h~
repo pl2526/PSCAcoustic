@@ -24,7 +24,7 @@ namespace FMM {
   public:
 
     // Constructor/Destructor
-    SH_Transform(Quadrature* quad, Indexing* index_);
+    SH_Transform(Quadrature* quad, Indexing* index);
     ~SH_Transform();
     
     // Transforms    

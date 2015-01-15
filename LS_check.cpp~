@@ -1,0 +1,561 @@
+#ifndef MAIN_CPP
+#define MAIN_CPP
+
+/*
+ *  MAIN.h
+ *  PSC
+ *
+ *  Created by Pierre-David Letourneau on 3/6/11.
+ *  Copyright 2011 Stanford University. All rights reserved.
+ *
+ *  Overstructure.
+ */
+
+#include <vector>
+#include <complex>
+#include <iostream>
+
+#include "Coordinates.h"
+#include "IncWave.h"
+#include "Scatterer.h"
+#include "Distributions.h"
+#include "PSCEnv.h"
+#include "Imaging.h"
+#include "Solver.h"
+#include "Finalize.h"
+
+#include "./Aux/Eigen/Dense"
+
+
+int main(int argc,char **args)
+{
+  int Proc_Idx = 0;
+
+  // PSC environment for fast algorithm
+  PSC_Env PSC_env(EPS); 
+
+  // Linear solver
+  Solver solver; 
+
+  // Global indexing
+  Indexing Index(LMAX); // TODO: Should not have different instances of Index
+
+
+  // Display relevant information concerning the problem
+  cout << endl << endl;
+  cout << "LMAX : " << LMAX << endl;
+  cout << "RTOL : " << RTOL << endl;
+  cout << "MAXITS : " << MAXITS << endl;
+  cout << "OMEGA : " << OMEGA << endl;
+  cout << "C_OUT : " << C_OUT << endl;
+  cout << "C : " << C << endl;
+  cout << "K_OUT : " << K_OUT << endl;
+  cout << "K : " << K << endl;
+  cout << "NScat : " << NScat << endl;
+  cout << "RADIUS : " << RADIUS << endl;
+  cout << "nLevels : " << nLevels << endl;
+  cout << "EPS : " << EPS << endl;
+  cout << endl;
+
+
+
+  // *** Parameters ***
+
+
+
+  // *** File names ***
+  std::string filename("../AcousticOutputFiles/FFH/HomogenizationCheck_A_");
+  std::string response_filename("../AcousticOutputFiles/FFH/HomogenizationCheck_farfield_A_");
+
+  std::string filename_full("../AcousticOutputFiles/FFH/HomogenizationCheck_full_A_");
+  std::string response_filename_full("../AcousticOutputFiles/FFH/HomogenizationCheck_farfield_full_A_");
+
+  std::string filename_equiv("../AcousticOutputFiles/FFH/HomogenizationCheck_equiv_A_");
+  std::string response_filename_equiv("../AcousticOutputFiles/FFH/HomogenizationCheck_farfield_equiv_A_");
+
+
+
+  // *** Full solution (Lippmann-Schwinger) parameters ***
+  bool full = true;    // Solve full Lipmann-Schwinger equation?
+  int P = 3;           // WRITEME 
+  double R = 1.;       // "Inside" domain
+  int K = 3;           // Number of Chebyshev points per cell
+  std::vector<double> cheb_pts(K);
+  for( int k = 0; k < K; k++ ){
+    cheb_pts[k] = cos( (2.*k+1.)/(2.*K) * PI );
+    cout << "cheb : " << cheb_pts[k] << endl;
+  }
+
+
+
+  // *** Parameters *** 
+  double S = 1./2.; // Omega (cube) half-sidelength (Choosen such that Vol(Omega) = 1)
+  double t = 1./3.;
+  double delta = 0.75;    // For Eq.(1.8) 
+
+  
+
+  // *** Source parameters ***
+  std::string src_type("PlaneWave");
+  Pvec src_wv(0., 0., std::abs(K_OUT), Pvec::Cartesian);   // Plane wave, eave vector
+
+
+  // *** Sampling points ***
+  int nlevels = 3;
+  int L = 15;             // Max degree expansion for translation at origin
+  Indexing Index_FF(L);
+  int N_S_MAX = 30;
+  int N_S = 0;
+  std::vector<Pvec> samples;
+
+  for( int i = 0; i < N_S_MAX; i++ )
+    samples.push_back( Pvec(1., i/(N_S_MAX-1.)*PI, 0, Pvec::Spherical) );
+  
+  //for( int i = 0; i < N_S_MAX; i++ )
+  // samples.push_back( Pvec(1., i/(N_S_MAX-1.)*PI, PI/2., Pvec::Spherical) );
+  
+  N_S = samples.size();
+ 
+
+  int J = 40;
+  double a = 2e-2;
+  for( int j = 0; j < J; j++){
+
+    a /= 1.5;
+    double r = delta*a/2.;
+    int M = std::ceil( 1./a );          // Number of sub-domains Omega_m
+    double s = pow(a, 1./3.)/2.;  // Omega_m (cube) half-sidelength (volume Omega_m = a)
+    double d_min = std::pow(a, t);      // Minimum distance between 2 scatterers
+
+    
+    // *** Construct scatterers ***
+    cout << "***Building scatterers..." << endl;
+    
+    // Sets Omega_m (disjoint cubes with center gamma and sidelength c)
+    srand48(time(0));
+    int N = std::floor( pow(M,1./3.)/2. );
+    M = (2*N)*(2*N)*(2*N);
+    if( M > 5000 ) { nlevels = 4; }
+    if( M > 50000 ) { nlevels = 5; }
+    std::vector<Pvec> O_m(M);          // Centers of cubes Omega_m
+    std::vector<Pvec> p_m(M);          // Location of "principal" scatterer in Omega_m
+    std::vector< std::vector<Pvec> > s_m(M, std::vector<Pvec>() );          // Location of "scattelite" scatterers in Omega_m
+    // *** Assumption: [K(z_m) + 1] = K(z_m) + 1 ***
+    std::vector<int> K_m(M);      // Number of scatterers (K(m) + 1) in each sub-domains Omega_m
+    std::vector<complex> C(M);
+    int l = 0;
+    std::vector<Scatterer> ScL;
+    std::vector<Scatterer> ScL_equiv;
+    for( int i = -N; i < N; i++ ){
+      for( int j = -N; j < N; j++ ){
+	for( int k = -N; k < N; k++ ){
+	  
+	  K_m[l] = 0;     // Number of satellites in Omega_m
+	  // TODO: Explain where does this 2i factor comes from. (Difference between green function 
+	  // and Hankel function). minus sign comes from conjugate in formula in paper
+	  C[l] = -2.*PI* r * CI;  // Capacitance of scatterers (same for all) in Omega_m
+	  
+	  // TODO: Adjust so fast enough from side
+	  O_m[l] = Pvec( i*(2.*s) + s, j*(2.*s) + s, k*(2.*s) + s, Pvec::Cartesian );
+	  std::vector<Pvec> v = RandCubic(s-r-d_min/2, s-r-d_min/2, s-r-d_min/2, r, d_min, O_m[l], K_m[l] + 1);
+	  
+	  // Spherical cluster
+	  if( O_m[l].r > 0.75*R )
+	    C[l] = 0.;
+
+
+	  // Full system
+	  p_m[l] =  v[0];
+	  Scatterer scatterer(r, K, K_OUT, RHO, p_m[l], 2);
+	  ScL.push_back(scatterer);
+	  
+	  //cout << O_m[l].x << " : " <<  O_m[l].y << " : " <<  O_m[l].z << " ; " << p_m[l].x << " : " <<  p_m[l].y << " : " <<  p_m[l].z << endl;
+	  
+	  s_m[l].resize(K_m[l]);
+	  for( int z = 0; z < K_m[l]; z++ ){ 
+	    s_m[l][z] =  v[z+1];
+	    Scatterer scatterer(r, K, K_OUT, RHO, s_m[l][z], 2);
+	    ScL.push_back(scatterer);
+	  }
+	  
+	  
+	  // Equivalent system
+	  Scatterer scatterer2(r, K, K_OUT, RHO, O_m[l], 2);
+	  //cout << scatterer2.TM[0] << " : " << C[l] << endl;
+	  scatterer2.TM[0] = (K_m[l] + 1.) * C[l] ;
+	  for( int i = 1; i <= LMAX; i++ ){
+	    //cout << abs(scatterer2.TM[i]) << endl;
+	    scatterer2.TM[i] = 0.;
+	  }
+	  ScL_equiv.push_back(scatterer2);
+	  
+	  
+
+	  l++;
+	}
+      }
+    }
+    
+    cout << "***Building scatterers: done" << endl << endl;
+    cout << "Total number of scatterers : " << ScL.size() << endl;
+    
+    
+    // *** Initialization of source ***
+    PlaneWave* IW = new PlaneWave(1., src_wv);
+    
+
+
+
+
+    // Compute full solution
+    Matrix<complex, Dynamic, 1> x;
+    //std::vector< std::vector<complex> > A( (L+1)*(L+1), std::vector<complex>((L+1)*(L+1)*K) );    // Linear system (matrix A in Ax = b)
+    //std::vector< complex > b( (L+1)*(L+1) );    // Linear system (vector b in Ax = b)
+    if( full ){
+      int L = P;
+
+      cout << L << " : " << M <<  endl;
+      // TODO: Cheb nodes needed?
+      std::vector< std::vector<Pvec> > cheb_nodes(O_m.size(), std::vector<Pvec>() );
+      Matrix<complex, Dynamic, Dynamic> A; A.resize( (L+1)*(L+1), (L+1)*(L+1)*K );    // Linear system (matrix A in Ax = b)
+      Matrix<complex, Dynamic, 1> b; b.resize( (L+1)*(L+1) );    // Linear system (vector b in Ax = b)
+
+
+      // TODO: slow? Too much memory?
+      // Compute and store Chebyshev nodes
+      for( int m = 0; m < (int) O_m.size(); m++ ){
+
+	for( int i = 0; i < K; i++ ){
+	  for( int j = 0; j < K; j++ ){
+	    for( int k = 0; k < K; k++ ){
+	      Pvec p(O_m[m].x + s*cheb_pts[i], O_m[m].y + s*cheb_pts[j], O_m[m].z + s*cheb_pts[k], Pvec::Cartesian);
+	      cheb_nodes[m].push_back(p);
+	    }
+	  }
+	}
+	
+      }
+
+
+      cout << "Computing entries matrix A..." << endl;
+      // Compute entries of matrix A and r.h.s. b
+      int i = 0;
+      for( int l = 0; l <= L; l++ ){
+	for( int m = -l; m <= l; m++){
+	  cout << "row : " << i << " / " << (L+1)*(L+1) << endl;
+
+	  // Compute entries for matrix A.
+	  int j = 0;
+	  for( int p = 0; p <= L; p++ ){
+	    for( int q = -p; q <= p; q++){
+	      for( int r = 0; r < K; r++){
+
+		complex alpha = 0;
+		for( int m = 0; m < (int) cheb_nodes.size(); m++ ){
+		  for( int k = 0; k < (int) cheb_nodes[m].size(); k++ ){
+		    alpha += pow(2.*s*PI/K,3.) * 
+		      ( Amos_sf_bessel_jl(l, K_OUT*cheb_nodes[m][k].r)*gsl_sf_harmonic(l, m, cheb_nodes[m][k].theta, cheb_nodes[m][k].phi) ) * 
+		      ( T(r,0,R,cheb_nodes[m][k].r)*gsl_sf_harmonic(p, q, cheb_nodes[m][k].theta, cheb_nodes[m][k].phi) ) * 
+		      ( (K_m[m] + 1.)*C[m] );
+		  }
+		}
+
+
+		// Note:  T(r,0,R,R) = 1
+		A(i,j) = 1. - K_OUT*CI*Amos_sf_hankel_1(l, K_OUT*R) * alpha;
+
+		j++;
+	      }
+	    }
+	  }
+	  cout << "done" << endl;
+
+
+	  //cout << "Computing entries r.h.s. b...";
+	  // Compute entries for r.h.s.
+	  b(i) = 0;
+	  for( int m = 0; m < (int) cheb_nodes.size(); m++ ){
+	    for( int k = 0; k < (int) cheb_nodes[m].size(); k++ ){
+	      b(i) += pow(2.*s*PI/K,3.) * K_OUT*CI*Amos_sf_hankel_1(l, K_OUT*R) *
+		( Amos_sf_bessel_jl(l, K_OUT*cheb_nodes[m][k].r)*gsl_sf_harmonic(l, m, cheb_nodes[m][k].theta, cheb_nodes[m][k].phi) ) * 
+	        IW->Evaluate(cheb_nodes[m][k]) * ( (K_m[m] + 1.)*C[m] );
+	    }
+	  }
+
+	  i++;
+	}
+      }
+      cout << "done" << endl;
+
+
+
+      // Solve linear system
+      cout << "Solving linear system...";
+      x = A.fullPivHouseholderQr().solve(b);
+      cout << "done" << endl;
+      
+
+      
+      // Compute response
+      cout << "Compute response...";
+      std::vector<complex> FF( (L+1)*(L+1) );
+      i = 0;
+      for( int l = 0; l <= L; l++ ){
+	for( int m = -l; m <= l; m++){  
+	  
+	  FF[i] = 0.;
+	  //for( int r = 0; r < K; r++ )
+	  //sol += 
+	  FF[i] /= gsl_sf_hankel_1(l, std::abs(K_OUT) * R);
+	  
+	  i++;
+	}
+      }
+      
+      
+      std::vector<complex> response_LM(samples.size());
+      for( int s = 0; s < (int) samples.size(); s++ ){
+	for( int i = 0; i < ((L+1)*(L+1)); i++ ){
+	  int l = Index_FF(i,0);
+	  int m = Index_FF(i,1);
+	  response_LM[s] += 1./(K_OUT*pow(CI, l+0.)) * FF[i] * gsl_sf_harmonic(l, m, samples[s].theta, samples[s].phi);
+	}
+      }
+      cout << "done" << endl;
+
+
+
+      // Write response
+      cout << "   ***Writing response...";
+      std::string temp_filename_full =  response_filename_full;
+      //temp_filename_full.append(nProc_str.str());
+      temp_filename_full.append(".csv");
+      char *Filename = (char*) temp_filename_full.c_str();
+      ofstream Resfile_full(Filename, ios::out);
+      for( int i = 0; i < samples.size(); i++ ){
+	Resfile_full << samples[i].theta << ", " << samples[i].phi << ", " 
+		     << std::real(response_LM[i]) << ", " << std::imag(response_LM[i]) << endl;
+      }
+      cout << " done" << endl;
+      
+      
+    }
+    
+    
+
+
+
+
+
+
+
+    
+    // ---- Computations ----- //
+    std::vector< std::vector<complex > > RHS(ScL.size(), std::vector<complex >(Index.size())); 
+    std::vector< std::vector<complex> > u(ScL.size(), std::vector<complex>(Index.size()));
+    
+     
+
+    
+    
+    
+    
+    
+    // --**-- Full system --**--
+
+    // *** Construct PSC environment ***
+    cout << "***Constructing environment...";
+    PSC_env.Construct(nlevels, a, K, K_OUT, ScL);
+    cout << " done" << endl << endl;
+    
+    
+    // *** Initialization of right-hand side *** 
+    cout << "***Initializing right-hand side..." << endl;
+    solver.RHSInit(IW, ScL, RHS);  
+    cout << "***Initializing right-hand side: done" << endl;
+    
+    
+    // *** Solve linear system *** 
+    cout << "   ***Solving linear system..." << endl;
+    double res = 1e10, rel_res = 1e10, cond;
+    int Niter;
+    
+    solver.Solve(PSC_env, ScL, RHS, u, res, rel_res, cond, Niter);
+    cout << "   ***Solving linear system: done" << endl;
+    
+    
+    
+    // TODO: Write in different format?
+    // *** Write information about problem to file ***
+    cout << "   ***Writing to file...";
+    Write_Info(j, src_type, res, rel_res, cond, Niter, filename, K_OUT, K, ScL.size());
+    Write_Source(j, IW, IncWave::Pt, filename);
+    Write_Location(j, ScL, filename);
+    Write_Solution(j, Index, u, filename);
+    cout << " done" << endl << endl;
+    
+    
+    
+    
+    // *** Compute far-field signature ***
+    cout << "   ***Computing far-field..." << endl;
+    // Translate to origin
+    std::vector<complex> response(N_S);
+    std::vector<complex> FF((L+1)*(L+1));
+    for( int i = 0; i < (L+1)*(L+1); i++)
+      FF[i] = 0.;
+
+    for( int n = 0; n < (int) ScL.size(); n++ ){
+      Pvec loc = -ScL[n].getLocation();
+      FMM::PointAndShoot T(loc.r, K_OUT, loc.theta, loc.phi, &Index_FF, &Index, true);
+  
+      //for( int k = 0; k < Index.size(); k++ )
+      //	cout << u[n][k] << endl;
+
+      std::vector<complex> vec = T.Apply(u[n]);
+      for( int i = 0; i < (L+1)*(L+1); i++)
+	FF[i] += vec[i];
+    }
+    cout << endl;
+
+    // for( int i = 0; i < (L+1)*(L+1); i++)
+    //	cout << i << " : " << FF[i] << endl;
+
+    // TODO: Initialize reponse?
+    for( int s = 0; s < (int) samples.size(); s++ ){
+      for( int i = 0; i < ((L+1)*(L+1)); i++ ){
+	int l = Index_FF(i,0);
+	int m = Index_FF(i,1);
+	response[s] += 1./(K_OUT*pow(CI, l+0.)) * FF[i] * gsl_sf_harmonic(l, m, samples[s].theta, samples[s].phi);
+      }
+    }
+    cout << " done" << endl;
+    
+    
+    cout << "   ***Writing response...";
+    std::stringstream nProc_str;
+    nProc_str << j;
+    std::string temp_filename =  response_filename;
+    temp_filename.append(nProc_str.str());
+    temp_filename.append(".csv");
+    char *Filename = (char*) temp_filename.c_str();
+    ofstream Resfile(Filename, ios::out);
+    for( int i = 0; i < (int) samples.size(); i++ ){
+      Resfile << samples[i].theta << ", " << samples[i].phi << ", " 
+	      << std::real(response[i]) << ", " << std::imag(response[i]) << endl;
+      
+      //cout << response[i] << endl;
+    }
+    Resfile.close();
+    cout << " done" << endl;
+
+    // Destroy environment
+    PSC_env.Destruct();
+    
+    
+    
+    
+    
+    
+    
+    
+    // --**-- Equivalent system --**--
+    
+    cout << "***Constructing environment...";
+    PSC_env.Construct(nlevels, a, K, K_OUT, ScL_equiv);
+    cout << " done" << endl << endl;
+
+
+    // *** Initialization of right-hand side *** 
+    cout << "***Initializing right-hand side...";
+    solver.RHSInit(IW, ScL_equiv, RHS);  
+    cout << " done" << endl;
+    
+    
+    // *** Solve linear system *** 
+    cout << "   ***Solving linear system...";
+    res = 1e10; rel_res = 1e10;
+    solver.Solve(PSC_env, ScL_equiv, RHS, u, res, rel_res, cond, Niter);
+    cout << " done" << endl;
+    
+    
+    
+    // TODO: Write in different format?
+    // *** Write information about problem to file ***
+    cout << "   ***Writing to file...";
+    Write_Info(j, src_type, res, rel_res, cond, Niter, filename_equiv, K_OUT, K, ScL.size());
+    Write_Source(j, IW, IncWave::Pt, filename_equiv);
+    Write_Location(j, ScL, filename_equiv);
+    Write_Solution( j, Index, u, filename_equiv);
+    cout << " done" << endl << endl;
+    
+    
+    
+    
+    // *** Compute far-field signature ***
+    cout << "   ***Computing far-field...";
+
+    // Translate to origin
+    std::vector<complex> response_equiv(N_S);
+    for( int i = 0; i < N_S; i++ )
+      response_equiv[i] = 0;
+
+    std::vector<complex> FF_equiv((L+1)*(L+1));
+    for( int i = 0; i < (L+1)*(L+1); i++)
+      FF_equiv[i] = 0.;
+    for( int n = 0; n < (int) ScL.size(); n++ ){
+      Pvec loc = -ScL_equiv[n].getLocation();
+
+      //for( int k = 0; k < Index.size(); k++ )
+      //cout << u[n][k] << endl;
+      
+      FMM::PointAndShoot T(loc.r, K_OUT, loc.theta, loc.phi, &Index_FF, &Index, true);
+      std::vector<complex> vec = T.Apply(u[n]); 
+      for( int i = 0; i < (L+1)*(L+1); i++)
+	FF_equiv[i] += vec[i];
+    }
+
+    //for( int i = 0; i < (L+1)*(L+1); i++)
+    //  cout << i << " : " << FF_equiv[i] << endl;
+
+    for( int s = 0; s < samples.size(); s++ ){
+      for( int i = 0; i < (L+1)*(L+1); i++ ){
+	int l = Index_FF(i,0);
+	int m = Index_FF(i,1);
+	response_equiv[s] += 1./(K_OUT*pow(CI, l+0.)) * FF_equiv[i] * gsl_sf_harmonic(l, m, samples[s].theta, samples[s].phi);
+      }
+    }
+    cout << " done" << endl;
+    
+    
+    cout << "   ***Writing response...";
+    std::string temp_filename_equiv =  response_filename_equiv;
+    temp_filename_equiv.append(nProc_str.str());
+    temp_filename_equiv.append(".csv");
+    char *Filename2 = (char*) temp_filename_equiv.c_str();
+    ofstream Resfile_equiv(Filename2, ios::out);
+    for( int i = 0; i < samples.size(); i++ ){
+      Resfile_equiv << samples[i].theta << ", " << samples[i].phi << ", " 
+		    << std::real(response_equiv[i]) << ", " << std::imag(response_equiv[i]) << endl;
+    }
+    cout << " done" << endl;
+    
+        
+    // Destroy environment
+    PSC_env.Destruct();
+    
+    
+    
+    
+
+
+  }
+  
+  return 0;
+}
+
+
+
+
+
+#endif

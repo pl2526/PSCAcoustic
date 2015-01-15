@@ -5,8 +5,12 @@
 #include "Quadrature.h"
 #include "SphericalHarmonicsTransform.h" 
 #include "Box.h"
-#include "../Coordinates.h"
 #include "TransferUtils.h"
+
+#include "../Constants.h"
+#include "../Coordinates.h"
+#include "../Indexing.h"
+
 
 namespace FMM {
 
@@ -131,13 +135,13 @@ namespace FMM {
   class Leaf_HF_Translation_Function : public Leaf_Translation_Function
   {
 
-    std::vector<complex> C;
-    SH_Transform* SH_T;
+    std::vector<complex> C; // Storage of translation coefficients
+    SH_Transform* SH_T;        // Spherical harmonics transform
 
   public:
     
     // Constructor
-    Leaf_HF_Translation_Function(const Vec3& r, complex k_out, Quadrature* leaf_quad, SH_Transform* SH_T_);
+    Leaf_HF_Translation_Function(const Vec3& r, complex k_out, Quadrature* leaf_quad);
 
     // Destructor
     ~Leaf_HF_Translation_Function(){}
@@ -153,8 +157,8 @@ namespace FMM {
   class Leaf_Direct_Translation_Function : public Leaf_Translation_Function
   {
 
-    PointAndShoot *T_up;
-    PointAndShoot *T_down;
+    PointAndShoot *T_up;         // Translation up
+    PointAndShoot *T_down;       // Translation down
     std::vector<complex> vec;
 
   public:    

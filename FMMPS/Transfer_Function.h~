@@ -12,6 +12,9 @@ namespace FMM {
   {
     
   public:
+
+    static Indexing global_index;
+
     // Constructor/Destructor
     Transfer_Function(){}
     virtual ~Transfer_Function(){}
@@ -50,12 +53,11 @@ namespace FMM {
   {
  
     PointAndShoot* PS_Transfer;
-    static Indexing global_index;
 
   public:
     // Constructor/Destructor
     //Direct_Transfer_Function( Indexing* index, Vec3 r, complex k_out);
-    Direct_Transfer_Function( Vec3 r, complex k_out);
+    Direct_Transfer_Function( Indexing* index, Vec3 r, complex k_out);
     ~Direct_Transfer_Function();
 
     // From vecFrom to vecTo

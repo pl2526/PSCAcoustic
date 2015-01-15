@@ -1,3 +1,27 @@
+/*
+ *  Level.h
+ *  PSCAcoustic
+ *
+ *  Objects needed at each level of the FMM tree
+ *
+ *
+ *  Copyright (C) 2014 Pierre-David Letourneau
+ *  
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+*/
+
+
 #ifndef LEVEL_FMM_H
 #define LEVEL_FMM_H
 
@@ -85,12 +109,8 @@ namespace FMM {
       inline Quadrature* getQuad(){ return quad; }
       inline int getIdxSize(){ return index->size(); }
 
-      /* inline NFunction* getScratch()
-      {
-	return &scratchSpace;
-	}*/
-
-      void setL();
+      void setL(double eps, double r, complex k, complex k_out);
+      int getL(){ return L; };
       void initializeFields( Type type = FORWARD );
       void zeroFields();
 

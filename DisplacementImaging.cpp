@@ -15,6 +15,7 @@
 #include <complex>
 #include <iostream>
 
+#include "General.h"
 #include "Coordinates.h"
 #include "IncWave.h"
 #include "Scatterer.h"
@@ -23,6 +24,8 @@
 #include "PSCEnv.h"
 #include "Solver.h"
 #include "Finalize.h"
+
+#include "./FMMPS/TransferUtils.h"
 
 Indexing temp_index(LMAX);
 
@@ -45,18 +48,18 @@ double ScatCoeff(double mu, double a){
 // Displacement profile
 // *** Gradient of the displacement must be of the order of eps^(1+2*delta)
 Pvec Displacement( Pvec p, double amp, double eps, double delta){
-  double x_disp = amp * 0.;//exp(-pow(eps, delta)/2. * p.x*p.x);
-  double y_disp = 1e-5;//amp * 1.;
-  double z_disp = amp * 0;
+  double x_disp = 5e-4;// * cos(2*PI*p.x);//8e-3 * sin(PI*(p.x-2));//2e-3;//exp(-pow(eps, delta)/2. * p.x*p.x);
+  double y_disp = 0;//2e-3 * sin(2*PI*p.y);//2e-3;//amp * 1.;
+  double z_disp = 0.;
   Pvec disp(x_disp, y_disp, z_disp, Pvec::Cartesian);
   return disp;
 }
 
-
+// TODO: WHAT IS THIS LOG(1e-5)?
 // Windows for curvelets
 double W_r(double scale, double r){
     double center_r = 5./(4.*scale);
-    double sigma_r = -pow(3./(4.*scale),2.)/log(1e-5);
+    double sigma_r = -pow(3./(4.*scale),2.) / log(1e-5);
     return std::exp(-pow(r - center_r,2.)/sigma_r);
 }
    
@@ -73,7 +76,9 @@ int main(int argc,char **args)
   //PSC_Env PSC_env(nLevels, EPS);  // PSC environment for fast algorithm
   Solver solver;   // Linear solver
   Indexing Index(LMAX); // TODO: Should not have different instances of Index
-
+  Indexing local_Index(5);
+  FMM::S_Rotation::S_Init(12);
+  FMM::Z_transfer::Z_Init(12);
 
   // Display relevant information concerning the problem
   cout << endl << endl;
@@ -92,179 +97,219 @@ int main(int argc,char **args)
   cout << endl;
 
 
-  // *** Parameters ***
-  std::string src_type("PW");
-  double mu = 1;               // Mean of scattering coefficients
-  double a = 1.;                // amplitude of scattering coefficients
-  double src_scale = 1e-2;      // Scale of the curvelet
-  double delta = pow(src_scale, 1.5);
-  double disp_amp_scale =  1e-6;//pow(src_scale, 1.+delta);           // Scale of the amplitude of the displacement
-
-
-
-
   // *** File names ***
-  std::string filename("DI_SingleScattering_mu=0_HH");
-  std::string freq_filename("DI_SingleScattering_mu=0_freq_HH");
-  std::string extra_filename("DI_SingleScattering_mu=0_extra_HH");
-  std::string disp_filename("DI_SingleScattering_mu=0_HH_disp");
-  std::string rcv_filename("DI_SingleScattering_mu=0_rcv_HH");
-  std::string image_filename("DI_SingleScattering_mu=0_image_HH");
+  std::string curvelet_filename("../AcousticOutputFiles/DI/DI_SingleScattering_mu=0_curvelet_H");
+
+  std::string filename("../AcousticOutputFiles/DI/DI_SingleScattering_mu=0_H");
+  std::string freq_filename("../AcousticOutputFiles/DI/DI_SingleScattering_mu=0_freq_H");
+  std::string extra_filename("../AcousticOutputFiles/DI/DI_SingleScattering_mu=0_extra_H");
+  std::string disp_filename("../AcousticOutputFiles/DI/DI_SingleScattering_mu=0_H_disp");
+  std::string src_filename("../AcousticOutputFiles/DI/DI_SingleScattering_mu=0_src_H");
+  std::string rcv_filename("../AcousticOutputFiles/DI/DI_SingleScattering_mu=0_rcv_H");
+  std::string sgn_filename("../AcousticOutputFiles/DI/DI_SingleScattering_mu=0_sgn_H");
+  std::string image_filename("../AcousticOutputFiles/DI/DI_SingleScattering_mu=0_image_H");
 
   std::string filename_d(filename); filename_d.append("_disp");
   std::string freq_filename_d(freq_filename); freq_filename_d.append("_disp.csv");
   std::string extra_filename_d(extra_filename); extra_filename_d.append("_disp.csv");
   std::string disp_filename_d(disp_filename); disp_filename_d.append("_disp.csv");
-  std::string rcv_filename_d(rcv_filename); rcv_filename_d.append("_disp.csv");
+  std::string sgn_filename_d(sgn_filename); sgn_filename_d.append("_disp");
   std::string image_filename_d(image_filename); image_filename_d.append("_disp.csv");
 
+  curvelet_filename.append(".csv");
   freq_filename.append(".csv");
   extra_filename.append(".csv");
   disp_filename.append(".csv");
+  src_filename.append(".csv");
   rcv_filename.append(".csv");
+  //sgn_filename.append(".csv");
   image_filename.append(".csv");
 
 
-
-
-
-
-  // *** Image parameters ***
-  bool produce_image = false;
-  int M = 35;     // Number of pixels: 2*M+1 from -M to M
-  double L;   // size of image [-L,L]x[-L,L]
-
+  // *** General parameters ***
+  std::string src_type("PW");
+  double mu = 0.;               // Mean of scattering coefficients
+  double sigma = 1.;          // Variance of scattering coefficients
+  double a = 1.;                // amplitude of scattering coefficients
+  double src_scale = 5.e-3/(2*PI);      // Scale of the curvelet
+  double delta = pow(src_scale, 1.5);
+  double disp_amp_scale =  1e-4;//pow(src_scale, 1.+delta);           // Scale of the amplitude of the displacement
+  int N_t = 200; // Number of samples in time
 
 
 
   // *** Sources' parameters ***
-  Pvec src_loc(0.,0.,0.,Pvec::Cartesian);
-  Pvec src_dir(1.,PI/2.,PI/2,Pvec::Spherical);    // Curvelet direction
- 
+  int N_src = 1;
+  std::vector<Pvec> src_dir(N_src);
+  std::vector<Pvec> src_loc(N_src);
+  src_dir[0] = Pvec(1.,PI/2.,0.,Pvec::Spherical);
+  src_loc[0] = Pvec(0.,0.,0.,Pvec::Cartesian);
+
+  // Save sources information
+  ofstream src_file(src_filename.c_str(), ios::out);
+  for( int q = 0; q < N_src; q++ ){
+    src_file << src_dir[q].x << "," <<  src_dir[q].y << "," << src_dir[q].z << "," << src_loc[q].x << "," <<  src_loc[q].y << "," << src_loc[q].z << endl;
+  }
+  src_file.close();
+
 
 
 
 // *** Receivers' locations ***
-  // TODO: currently only works for 1 receiver
-  std::vector<Pvec> rcv_loc(1);
-  rcv_loc[0] =  Pvec(1.,0.1,0.,Pvec::Cartesian);
+  int N_rcv = 100;
+  double R = 1e6;
+  std::vector<Pvec> rcv_loc(N_rcv);
+  for( int i = 0; i < N_rcv; i++){
+    double phi_rec = 2*PI * (double) i / (N_rcv + 1.);
+    rcv_loc[i] = Pvec(5e3, PI/2., phi_rec, Pvec::Spherical);
+  }
+  /*std::vector<Pvec> rcv_loc(5);
+  rcv_loc[0] =  Pvec(-5e3,0.,0.,Pvec::Cartesian);
+  rcv_loc[1] =  Pvec(0.,-5e3,0.,Pvec::Cartesian);
+  rcv_loc[2] =  Pvec(5e3/sqrt(2),5e3/sqrt(2), 0.,Pvec::Cartesian);
+  rcv_loc[3] =  Pvec(5e3, -3e3,0.,Pvec::Cartesian);
+  rcv_loc[4] =  Pvec(5e3, 3e3,0.,Pvec::Cartesian);*/
+
+  // TODO: Needed?
   double max_rcv_loc_r = 0;
   for( int i = 0; i < rcv_loc.size(); i++ )
     max_rcv_loc_r = std::max(max_rcv_loc_r, rcv_loc[i].r);
-
-
-
-
-
-  // *** Displacement parameters *** 
-  ofstream disp_file((char*) disp_filename.c_str(), ios::out);
-
-  int N_d_x = 200;
-  int N_d_y = 100;
-  double L_d_x = 2;
-  double L_d_y = 1;
-  for( int i = 0; i <= N_d_x; i++ ){
-    for( int j = -N_d_y; j <= N_d_y; j++ ){
-      Pvec loc(i*L_d_x/N_d_x, j*L_d_y/N_d_y, 0., Pvec::Cartesian);
-      Pvec disp = Displacement(loc, disp_amp_scale, src_scale, delta);
-      disp_file << loc.x << "," << loc.y << "," << disp.x <<  "," << disp.y << "," << disp.z << "," << endl;
-    }
-    disp_file << endl;
+  
+  // Save receivers information
+  ofstream rcv_file(rcv_filename.c_str(), ios::out);
+  for( int q = 0; q < N_rcv; q++ ){
+    rcv_file << rcv_loc[q].x << "," <<  rcv_loc[q].y << "," << rcv_loc[q].z << endl;
   }
+  rcv_file.close();
+ 
 
+
+
+  // *** Cluster properties ***
+  double X_DIM = 1.1*sqrt(src_scale);
+  double Y_DIM = 0.1;//0.7;
+  Pvec Sc_center(0.2, 0., 0.,Pvec::Cartesian);
+  double Sc_max = Sc_center.x + std::max(X_DIM, Y_DIM);
+  
+
+  
+
+  // *** Time samples, curvelet location and displacement ***
+  ofstream crv_file((char*) curvelet_filename.c_str(), ios::out);
+  ofstream disp_file((char*) disp_filename.c_str(), ios::out);
+  std::vector< std::vector<double> > time(N_rcv, std::vector<double>(N_t) );
+  for( int i = 0; i < N_t; i++ ){
+
+    // Location of a curvelet leaving from the origin in the x-direction
+    Pvec loc( (double) i / (double) N_t * 1.2*Sc_max, 0., 0., Pvec::Cartesian);
+    crv_file << loc.x << "," << loc.y << "," << loc.z << endl;
+
+    // Displacement at location of curvelet
+    Pvec disp = Displacement(loc, disp_amp_scale, src_scale, delta);
+    disp_file << disp.x << "," << disp.y << "," << disp.z << endl;
+
+    // Time at which a curvelet located at "loc" will arrive at receiver
+    for(int q = 0; q < N_rcv; q++){
+      Pvec x_hat = rcv_loc[q] - loc;
+      time[q][i] = std::sqrt( (rcv_loc[q].x - loc.x)*(rcv_loc[q].x - loc.x) + (rcv_loc[q].y - loc.y)*(rcv_loc[q].y - loc.y) +
+			      (rcv_loc[q].z - loc.z)*(rcv_loc[q].z - loc.z) ) + loc.r;
+    }
+  }
+  crv_file.close();
+  disp_file.close();
+
+
+  
 
 
 
   // *** Frequency content of curvelet ***
-  double R = 0.15;                                 // Radius of spherical culster within which scatterers lie
 
-  // xi_r corresponds to radius
-  // xi_p corresponds to phi
-  double xi_r_min = 1./(2.*src_scale);
-  double xi_r_max = 2./src_scale;
-  double xi_p_min = src_dir.phi - 1.1*sqrt(src_scale);
-  double xi_p_max = src_dir.phi + 1.1*sqrt(src_scale);
-
-  // Period considered for imaging purposes
-  double T = 1.2*(max_rcv_loc_r + 2*R);          // Period
-  int N_t = 15*T / (4*src_scale);
-  cout << "T : " << T << ", N_t : " << N_t << endl;
-  double src_rate = 1./(2.*T);  
-  //double src_rate_r = 1./(2.*T);                 // Sampling rate in radial direction
-  //double src_rate_p = src_rate_r / xi_r_max;     // Sampling rate in angular direction
-  std::vector<double> time(N_t);
-  for( int i = 0; i < N_t; i++ )
-    time[i] = ((double) i)/N_t * T;
- 
-
-  /*  // Sampling in radial direction
-  int src_N_r = std::ceil((xi_r_max - xi_r_min) / src_rate_r);
-  std::vector<double> src_xi_r(src_N_r+1);
-  for(int i = 0; i <= src_N_r; i++ )
-    src_xi_r[i] = xi_r_min + ((double) i)/src_N_r * (xi_r_max - xi_r_min);
-
-
-  // Sampling in angular direction
-  int src_N_p = std::ceil((xi_p_max - xi_p_min) / src_rate_p);
-  std::vector<double> src_xi_p(src_N_p+1);
- for(int i = 0; i <= src_N_p; i++ )
- src_xi_p[i] = xi_p_min + ((double) i)/src_N_p * (xi_p_max - xi_p_min);*/
-
-  // Sampling in x direction
-  int src_N_y = std::ceil((xi_r_max - xi_r_min) / src_rate);
-  std::vector<double> src_xi_y(src_N_y+1);
-  for(int i = 0; i <= src_N_y; i++ ){
-    src_xi_y[i] = xi_r_min + ((double) i)/src_N_y * (xi_r_max - xi_r_min);
-    //cout << " y : " <<  src_xi_y[i] << endl;
-  }
-
-
-  // Sampling in y direction
-  double x_min = -xi_r_max*sin(xi_p_max);// - src_dir.phi);
-double x_max = xi_r_max*sin(xi_p_max);// - src_dir.phi);
-  int src_N_x = 2*std::ceil( (x_max - x_min) / (2*src_rate));
-  std::vector<double> src_xi_x(src_N_x+1);
-  for(int i = 0; i <= src_N_x; i++ ){
-    src_xi_x[i] = x_min + ((double) i)/src_N_x * (x_max - x_min);
-    cout << " x : " <<  src_xi_x[i] << endl;
-  }
-
-  //cout << xi_r_max << " : " <<sin(xi_p_max) << " : " << sin(xi_p_min) << " : " << src_rate << " : " << endl;	        
- cout << "Number of samples : x : " << src_N_x << " : y : " << src_N_y << endl;
-
-
-
- /*
- // TODO: Clean here
-  std::vector< std::vector<double> > src_amp(src_N_r+1, std::vector<double>(src_N_p+1));
-  ofstream freq_file((char*) freq_filename.c_str(), ios::out);
-  for(int i = 0; i < src_N_r; i++ ){
-    for(int j = 0; j < src_N_p; j++ ){
-      //freq_file << src_xi_r[i] << "," << src_xi_p[j] << endl;
-      src_amp[i][j] = 1.;
+   // xi_r corresponds to radius; xi_p corresponds to phi
+  double src_rate = 1./(1. * Sc_max);  
+  //double src_rate = 1./(6.*Y_DIM);  
+    double xi_r_min = 1./(2.*src_scale);
+    double xi_r_max = 2./src_scale;
+    //double xi_p_min = - 1.1*sqrt(src_scale);
+    //double xi_p_max =  1.1*sqrt(src_scale);
+    //double xi_p_min = src_dir[s].phi - 1.1*sqrt(src_scale);
+    //double xi_p_max = src_dir[s].phi + 1.1*sqrt(src_scale);
+    
+    // Sampling
+    double x_min = -xi_r_max;
+    double x_max = xi_r_max;
+    int N_crv = 2*std::ceil( std::abs(x_max) / src_rate);
+    cout << "Number of samples : " << N_crv << ":" << N_crv * N_crv << endl;
+    
+    double src_xi_x, src_xi_y;
+    complex c;
+    std::vector< std::vector<Pvec> > src_xi(N_src, std::vector<Pvec>() );
+    std::vector<int> N_freq(N_src);
+    std::vector<std::vector<std::vector<complex> > > C(N_src, std::vector<std::vector<complex> >(N_rcv, std::vector<complex>()));
+    
+    
+    for( int s = 0; s < N_src; s++ ){
+      int i = 0;
+      int j = 0;
+      int ctr = 0;
+      
+      while( i <= N_crv ){
+	cout << i << endl;
+	src_xi_x = x_min + ((double) i)/N_crv * (x_max - x_min);
+	while( j <= N_crv ){
+	  src_xi_y = x_min + ((double) j)/N_crv * (x_max - x_min);
+	  
+	  Pvec src_wv(src_xi_x, src_xi_y, 0., Pvec::Cartesian);	
+	  c =  W_r(src_scale, src_wv.r) * W_p(src_scale, src_dir[s].phi, src_wv.phi);
+	  
+	  if( std::abs(c) > 1e-9 ){
+	    Pvec vec(src_xi_x, src_xi_y, 0., Pvec::Cartesian);
+	    src_xi[s].push_back(vec);
+	    ctr++;
+	    
+	    for( int q = 0; q < N_rcv; q++){
+	      C[s][q].push_back( exp(CI*src_wv.r*rcv_loc[q].r) * c );
+	    }
+	  }
+	  
+	  j++;
+	}
+	j = 0;
+	i++;
+      }
+      
+      N_freq[s] = ctr;
     }
-  }
-  freq_file.close();
- */
+
+    for( int s = 0; s < N_src; s++ )
+      src_xi[s].resize(N_freq[s]);
+
+
+
+
+
 
 
 
   // *** Save extra information to file ***
+    // TODO: FIX ME
   // Save extra info to file (info that's not used in the standard cases)
   char *Filename = (char*) extra_filename.c_str();
   ofstream extra_file(Filename, ios::out);
-  extra_file << "Number of freq samples in x: ," << src_N_x << endl;
-  extra_file << "Number of freq samples in y: ," << src_N_y << endl;
+  extra_file << "Number of freq samples in x: ," << 0. << endl;
+  extra_file << "Number of freq samples in y: ," << 0. << endl;
   extra_file << "Freq sampling rate (radius): ," << src_rate << endl;
   extra_file << "Freq sampling rate (phi): ," << src_rate << endl;
   extra_file << "Curvelet scale: ," << src_scale << endl;
-  extra_file << "Curvelet direction: ," << src_dir.x << " , "<<  src_dir.y << " , " << src_dir.z << " , " << endl;
-  extra_file << "Image window center: ," << N_d_x << endl;
-  extra_file << "Image window N_x pixels: ," << N_d_x << endl;
-  extra_file << "Image window N_y pixels: ," << N_d_y << endl;
-  extra_file << "Image window L_x size: ," << L_d_x << endl;
-  extra_file << "Image window L_y size: ," << L_d_y << endl;
-
+  extra_file << "Curvelet direction: ," << src_dir[0].x << " , "<<  src_dir[0].y << " , " << src_dir[0].z << " , " << endl;
+  extra_file << "Cluster center: ," << Sc_center.x << "," << Sc_center.y << "," << Sc_center.z  << endl;
+  extra_file << "Cluster X dim: ," << X_DIM << endl;
+  extra_file << "Cluster Y dim: ," << Y_DIM << endl;
+  //extra_file << "Time interval: ," << T_1 << "," << T_2 << endl;
+  extra_file << "Time interval samples: ," << N_t << endl;
+  //extra_file << "Image window center: ," << N_d_x << endl;
+  //extra_file << "Image window N_x pixels: ," << N_d_x << endl;
+  //extra_file << "Image window N_y pixels: ," << N_d_y << endl;
 
 
 
@@ -273,181 +318,223 @@ double x_max = xi_r_max*sin(xi_p_max);// - src_dir.phi);
 
 
   // ---- Computations -----
-
-  // *** Construct scatterers ***
-  cout << "***Building scatterers..." << endl;
-  std::vector<Scatterer> ScL;
-  std::vector<Scatterer> ScL_disp;
-  double d_min = 0.;
-  Pvec center(0.,1.1*R,0.,Pvec::Cartesian);
-  //std::vector<Pvec> scat_loc(1); scat_loc[0] = Pvec(0.,0.,0.,Pvec::Cartesian);
-  std::vector<Pvec> scat_loc = RandSphericalXY(R, RADIUS, d_min, center, NScat);
-  assert(scat_loc.size() == NScat);
-  std::vector<complex> t_matrix_coeff(NScat); // Nonscales  
-  for( int i = 0; i < NScat; i++ ){
-    
-    Pvec loc(scat_loc[i].x, scat_loc[i].y, 0., Pvec::Cartesian);
-    Pvec loc_disp = loc + Displacement(loc, disp_amp_scale, src_scale, delta);
-    t_matrix_coeff[i] = 1.;//(mu + 0.1*mu*(2.*drand48()-1.)); // The Mie coefficients are overriden
-    
-    Scatterer scatterer( RADIUS, K, K_OUT, RHO, loc);
-    //scatterer.TM[0] = t_matrix_coeff[i];
-    ScL.push_back(scatterer);
-
-    Scatterer scatterer_disp( RADIUS, K, K_OUT, RHO, loc_disp);
-    //scatterer_disp.TM[0] = t_matrix_coeff[i];
-    ScL_disp.push_back(scatterer_disp);
-
-  }
-  cout << "***Building scatterers: done" << endl << endl;
-  
-
-
   // *** Compute solutions for each source and receiver locations ***
 
   std::vector< std::vector<complex> > u(NScat, std::vector<complex>(Index.size()));
   double res, rel_res, cond;
   Proc_Idx = 0;
-  std::vector< std::vector<complex> > trace(rcv_loc.size(), std::vector<complex>(N_t));
-  std::vector< std::vector<complex> > trace_disp(rcv_loc.size(), std::vector<complex>(N_t));
-  //std::vector< std::vector<complex> > trace_harm(src_N_r, std::vector<complex>(src_N_p));
-  //std::vector< std::vector<complex> > trace_harm_disp(src_N_r, std::vector<complex>(src_N_p));
-  std::vector< std::vector<complex> > trace_harm(src_N_x, std::vector<complex>(src_N_y));
-  std::vector< std::vector<complex> > trace_harm_disp(src_N_x, std::vector<complex>(src_N_y));
-  for( int i = 0; i < rcv_loc.size(); i++ ){
-    for( int j = 0; j < N_t; j++ ){
-      trace[i][j] = 0.;
-      trace_disp[i][j] = 0.;
+  std::vector< std::vector< std::vector<complex> > > trace(N_src,std::vector<std::vector<complex> >(N_rcv,std::vector <complex>(N_t,0.)));
+ std::vector< std::vector< std::vector<complex> > > trace_disp(N_src,std::vector<std::vector<complex> >(N_rcv,std::vector <complex>(N_t,0.)));
+
+
+  // Initialization
+ // TODO: Needed?
+ for( int s = 0; s < N_src; s++){
+   for( int q = 0; q < N_rcv; q++ ){
+     for( int j = 0; j < N_t; j++ ){
+       trace[s][q][j] = 0.;
+       trace_disp[s][q][j] = 0.;
+     }
+   }
+ }
+
+
+    
+    
+    // *** Construct scatterers ***
+    cout << "***Building scatterers..." << endl;
+    std::vector<Scatterer> ScL;
+    std::vector<Scatterer> ScL_disp;
+    double d_min = 0.;
+    //std::vector<Pvec> scat_loc(1); scat_loc[0] = Pvec(0.,1.1,0.,Pvec::Cartesian);
+    //std::vector<Pvec> scat_loc = RandSphericalXY(R, RADIUS, d_min, center, NScat);
+    std::vector<Pvec> scat_loc = RandRectangularXY(X_DIM, Y_DIM, RADIUS, d_min, Sc_center, NScat);
+    assert(scat_loc.size() == NScat);
+    std::vector<complex> t_matrix_coeff(NScat); // Nonscales  
+    for( int n = 0; n < NScat; n++ ){
+      
+      Pvec loc(scat_loc[n].x, scat_loc[n].y, 0., Pvec::Cartesian);
+      Pvec loc_disp = loc + Displacement(loc, disp_amp_scale, src_scale, delta);
+      cout << "loc : " <<  loc.x << " : " << loc.y << " : " << loc.z << " : " << endl;
+      double s = 0;
+      ( drand48() < 0.5 ) ? s = -sigma : s = sigma;
+      t_matrix_coeff[n] = mu + s; 
+      
+      Scatterer scatterer( RADIUS, K, K_OUT, RHO, loc);
+      ScL.push_back(scatterer);
+      
+      Scatterer scatterer_disp( RADIUS, K, K_OUT, RHO, loc_disp);
+      ScL_disp.push_back(scatterer_disp);
+      
     }
-  }
-
-
-
-  // Construct time-harmonic response
-  complex val, k_out, T_coeff;
-  Pvec src_wv(1., PI/2., 0., Pvec::Spherical);
-  PlaneWave* IW = new PlaneWave(1., src_wv);
-  for( int i = 0; i < src_N_x; i++ ){
-    cout << i << endl;
+   
+    for( int n = 0; n < NScat; n++ ){
+      ScL[n].TM[0] = t_matrix_coeff[n];
+      ScL_disp[n].TM[0] = t_matrix_coeff[n];
+    }
+    
+    cout << "***Building scatterers: done" << endl << endl;
+    
     
 
-    for( int j = 0; j < src_N_y; j++ ){
-      //Proc_Idx = i*src_N_p + j;
-      //double C = W_r(src_scale, src_xi_r[i]) * W_p(src_scale, src_dir.phi, src_xi_p[j]) / (src_N_r * src_N_p);
 
+    // *** Computations ***
 
-      // Initialization of source (r.h.s.)
-      //Pvec src_wv(src_xi_r[i], PI/2., src_xi_p[j], Pvec::Spherical);
-      Pvec src_wv(src_xi_x[i], src_xi_y[j], 0., Pvec::Cartesian);
-      IW->wv = src_wv;
-      //cout << src_xi_x[i] << " : " << src_xi_y[i] << endl;
-      //cout <<  src_wv.phi << " : " << src_dir.phi << " : " <<  src_wv.phi - src_dir.phi << endl;
-      double C = W_r(src_scale, src_wv.r) * W_p(src_scale, src_dir.phi, src_wv.phi) / (src_N_x*src_N_y);
-      //cout << "C : " << C << endl;
-      for( int n = 0; n < NScat; n++ ){
-	T_coeff = src_wv.r*src_wv.r * t_matrix_coeff[n]; // The Mie coefficients are overriden
-	ScL[n].TM[0] = T_coeff;
-	ScL_disp[n].TM[0] = T_coeff;
-      }
+    // Construct time-harmonic response
+    complex val, k_out;
+    Pvec src_wv(1., PI/2., 0., Pvec::Spherical);
+    PlaneWave* IW = new PlaneWave(1., src_wv);
+    
+    for( int s = 0; s < N_src; s++ ){
+      
+      std::vector< std::vector<complex> > trace_harm(N_rcv, std::vector<complex>(N_freq[s]) );
+      std::vector< std::vector<complex> > trace_harm_disp(N_rcv, std::vector<complex>(N_freq[s]) );
+      
+      
+      for( int k = 0; k < N_freq[s]; k++ ){
+	cout << "Source idx : " << (s + 1) << "/" << N_src << "  ;  " << "Frequency idx : " << k << "/" << N_freq[s]  << endl;
 	
+	// Update incoming wave
+	src_wv = src_xi[s][k];
+	IW->wv = src_wv;
+	
+
 
 	// --- Undisplaced field ---
 	
 	// Solve linear system (single-scattering; equals r.h.s.)
-	//cout << "***Initializing right-hand side..." << endl;
 	solver.RHSInit(IW, ScL, u);  
-	//cout << "***Initializing right-hand side: done" << endl;
 	
-	// Write information about problem to file
-	/* cout << "   ***Writing to file..." << endl;
-	   Write_Info(Proc_Idx, src_type, res, rel_res, cond, filename);
-	   Write_Source(Proc_Idx, IW, IncWave::Pt, filename);
-	   Write_Location(Proc_Idx, ScL, filename);
-	   Write_Solution( Proc_Idx, Index, u, filename);
-	   cout << "   ***Writing to file: done" << endl << endl;
-	*/
-
-	// Record signal at receivers location
-	trace_harm[i][j] = C *IW->Evaluate(rcv_loc[0]);// (Scatterer::Evaluate(rcv_loc[0], ScL, u, Hankel, src_wv.r));// + IW->Evaluate(rcv_loc[0]));//
+	/*	// Transfer espansion of each scatterer expansion to center
+	std::vector<complex> u_trans(local_Index.size());
+	for( int n = 0; n < NScat; n ++ ){
+	  Pvec p = -ScL[n].getLocation();
+	  complex wv = src_wv.r;
+	  FMM::PointAndShoot trans(p.r, wv, p.theta, p.phi, &local_Index, &Index, false);
+	  std::vector<complex> vec = trans.Apply(u[n]);	
 	  
-       
+	  for( int i = 0; i < local_Index.size(); i++ )
+	    u_trans[i] += vec[i];
+	}
 	
+	// Compute response in far-field
+	for( int q = 0; q < N_rcv; q++ ){ 
+	  trace_harm[q][k] = 0;
+	  for( int i = 0; i < local_Index.size(); i++ ){
+	    int l = local_Index(i,0);
+	    int m = local_Index(i,1);
+	    
+	    trace_harm[q][k] += C[s][q][k] * u_trans[i] * 1./(src_wv.r*pow(CI,l+1.)) * gsl_sf_harmonic(l, m, rcv_loc[q].theta, rcv_loc[q].phi);
+	    // TODO: exp(CI*src_wv.r*R)/R factor unnecessary right?
+	    // exp(CI*src_wv.r*R)/R;
+
+	    //cout << trace_harm[q][k] << endl;
+	  }
+	  }*/
+
+
+	for( int q = 0; q < N_rcv; q++ ){
+	  trace_harm[q][k] = 0;
+	  for( int n = 0; n < NScat; n ++ ){
+	    double dot = (rcv_loc[q].x*ScL[n].getLocation().x 
+			  + rcv_loc[q].y*ScL[n].getLocation().y 
+			  + rcv_loc[q].z*ScL[n].getLocation().z) / rcv_loc[q].r;
+	    trace_harm[q][k] += C[s][q][k] * u[n][0] * exp(-CI*src_wv.r*dot);
+	  }
+	}
+
+
 
 	
-	// Produce image
-	//if( produce_image )
-	//  Imaging(ScL, IW, image_filename, u, Proc_Idx, M, L);
-
-
-
 	// --- Displaced field ---
 	
 	// Solve linear system (single-scattering; equals r.h.s.)
-	//cout << "***Initializing right-hand side..." << endl;
-	solver.RHSInit(IW, ScL_disp, u);  
-	//cout << "***Initializing right-hand side: done" << endl;
-	
-	// Write information about problem to file
-	/* cout << "   ***Writing to file..." << endl;
-	   Write_Info(Proc_Idx, src_type, res, rel_res, cond, filename);
-	   Write_Source(Proc_Idx, IW, IncWave::Pt, filename);
-	   Write_Location(Proc_Idx, ScL, filename);
-	   Write_Solution( Proc_Idx, Index, u, filename);
-	   cout << "   ***Writing to file: done" << endl << endl;
-	*/
+	solver.RHSInit(IW, ScL_disp, u); 
+      
 
-	// Record signal at receivers location
-	trace_harm_disp[i][j] = IW->Evaluate(rcv_loc[0]);// C * (Scatterer::Evaluate(rcv_loc[0], ScL_disp, u, Hankel, src_wv.r));// + IW->Evaluate(rcv_loc[0]));
-	
+	/*	std::vector<complex> u_trans_disp(local_Index.size());
+	for( int n = 0; n < NScat; n ++ ){
+	  Pvec p = -ScL_disp[n].getLocation();
+	  FMM::PointAndShoot trans(p.r, src_wv.r + 0.*CI, p.theta, p.phi, &local_Index, &Index, false);
+	  std::vector<complex> vec = trans.Apply(u[n]);	
 
-    }
-  }
-
-
-  // Construct time response
-  cout << "time response" << endl;
-  for( int i = 0; i < src_N_x; i++ ){
-    cout << i << endl;
-    for( int j = 0; j < src_N_y; j++ ){
-      Pvec p(src_xi_x[i], src_xi_y[j], 0., Pvec::Cartesian);
-      for( int k = 0; k < rcv_loc.size(); k++ ){
-	for( int l = 0; l < N_t; l++ ){
-	  //trace[k][l] += trace_harm[i][j] * src_xi_r[i] * exp(-CI*src_xi_r[i]*time[l]);
-	  //trace_disp[k][l] += trace_harm_disp[i][j] * src_xi_r[i] * exp(-CI*src_xi_r[i]*time[l]);
-
-	  trace[k][l] += trace_harm[i][j] * exp(-CI*p.r*time[l]);
-	  trace_disp[k][l] += trace_harm_disp[i][j] * exp(-CI*p.r*time[l]);
+	  for( int i = 0; i < local_Index.size(); i++ )
+	    u_trans_disp[i] += vec[i];
 	}
-      }
-    }
-  }
+							
+
+	// Compute response in far-field
+	for( int q = 0; q < N_rcv; q++ ){ 
+	  trace_harm_disp[q][k] = 0;
+	  for( int i = 0; i < local_Index.size(); i++ ){
+	    int l = local_Index(i,0);
+	    int m = local_Index(i,1);
+
+	    trace_harm_disp[q][k] += C[s][q][k] * u_trans[i] * 1./(src_wv.r*pow(CI,l+1.)) * gsl_sf_harmonic(l, m, rcv_loc[q].theta, rcv_loc[q].phi);
+	      // TODO: exp(CI*src_wv.r*R)/R factor unnecessary right?
+	      // exp(CI*src_wv.r*R)/R;
+	  }
+	}*/
+
+
+							
+	// Transfer each scatterer expansion to center
+	for( int q = 0; q < N_rcv; q++ ){ 
+	  trace_harm_disp[q][k] = 0;
+	  for( int n = 0; n < NScat; n ++ ){
+	    double dot = (rcv_loc[q].x*ScL_disp[n].getLocation().x 
+			  + rcv_loc[q].y*ScL_disp[n].getLocation().y 
+			  + rcv_loc[q].z*ScL_disp[n].getLocation().z) / rcv_loc[q].r;
+	    
+	    trace_harm_disp[q][k] += C[s][q][k] * u[n][0] * exp(-CI*src_wv.r*dot);
+	  }
+	}
+	
+							}
+      
+      
+      // TODO: Optimize with fft?
+      // Construct time response for each receiver
+      for( int q = 0; q < N_rcv; q++ ){ 
+	cout << "time response : " << q << endl;
+	for( int k = 0; k < N_freq[s]; k++ ){
+	  Pvec p = src_xi[s][k];
 	  
+	  for( int l = 0; l < N_t; l++ ){
+	    trace[s][q][l] += trace_harm[q][k] * exp(-CI*p.r*time[q][l]);
+	    trace_disp[s][q][l] += trace_harm_disp[q][k] * exp(-CI*p.r*time[q][l]);
+	  }
+	  
+	}	
+      }
+      
+      }					       
 
 
+    // *** Save data ***
+    
+    // Recorded signal
+    std::string file;
+    for( int s = 0; s < N_src; s++){
 
-  // Save data
-  ofstream rcv_file(rcv_filename.c_str(), ios::out);
-  ofstream rcv_file_d(rcv_filename_d.c_str(), ios::out);
-  for( int k = 0; k < rcv_loc.size(); k++ ){
-    rcv_file << rcv_loc[k].x << "," <<  rcv_loc[k].y << ",";
-    rcv_file_d << rcv_loc[k].x << "," <<  rcv_loc[k].y << ",";
-  }
-  rcv_file << endl;
-  rcv_file_d << endl;
- 
+      std::ostringstream stm ;
+      stm << s;
+      std::string sgn_filename_ = sgn_filename + "_" + stm.str() + ".csv";
+      std::string sgn_filename_d_ = sgn_filename_d + "_" + stm.str() + ".csv";
 
-  
-  for( int i = 0; i < N_t; i++ ){
-    for( int k = 0; k < rcv_loc.size(); k++ ){
-      rcv_file << time[i] << " , " << std::real(trace[k][i]) << "," << std::imag(trace[k][i]) << ",";
-      rcv_file_d << time[i] << " , " << std::real(trace_disp[k][i]) << "," << std::imag(trace_disp[k][i]) << ",";
+      ofstream sgn_file(sgn_filename_.c_str(), ios::out);
+      ofstream sgn_file_d(sgn_filename_d_.c_str(), ios::out);
+      for( int i = 0; i < N_t; i++ ){
+	for( int q = 0; q < N_rcv; q++ ){
+	  sgn_file << std::setprecision(15) << time[q][i] << " , " << std::real(trace[s][q][i]) << "," << std::imag(trace[s][q][i]) << ",";
+	  sgn_file_d << std::setprecision(15) << time[q][i] << " , " << std::real(trace_disp[s][q][i]) << "," << std::imag(trace_disp[s][q][i]) << ",";
+	}
+	sgn_file << endl;
+	sgn_file_d << endl;
+      }
+      sgn_file.close();
+      sgn_file_d.close();
     }
-    rcv_file << endl;
-    rcv_file_d << endl;
-  }
-  rcv_file.close();
-  rcv_file_d.close();
-
 
 
   return 0;

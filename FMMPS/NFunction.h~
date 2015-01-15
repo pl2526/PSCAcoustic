@@ -1,6 +1,8 @@
 #ifndef NFUNCTION_FMM_H
 #define NFUNCTION_FMM_H
 
+// Only .h file in this case
+
 #include "General.h"
 #include "Quadrature.h"
 
@@ -64,22 +66,7 @@ namespace FMM {
       { 
 	return *quad;
       }
-
-    /*    
-    // This = A*B
-    inline void setProduct( const NFunction& A, const NFunction& B ) 
-    {
-      assert( quad == A.quad );
-      assert( A.quad == B.quad );
-      
-      int K = C.size();
-      for( int k = 0; k < K; ++k )
-	C[k] = A.C[k] * B.C[k];
-    }
-    */
-
-
-  };
+    };
   
 }
 

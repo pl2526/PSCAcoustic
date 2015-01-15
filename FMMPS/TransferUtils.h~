@@ -158,7 +158,7 @@ namespace FMM {
     
     // Application of operator
     // Note : pass by value since rotations act in place
-    std::vector<complex> Apply( std::vector<complex> vec, Type type = FORWARD );
+    std::vector<complex> Apply( std::vector<complex>& vec, Type type = FORWARD );
   };
 
   

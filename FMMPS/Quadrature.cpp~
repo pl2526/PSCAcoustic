@@ -30,8 +30,8 @@ namespace FMM {
     //---- Quadrature Helmholtz ----//
     
     // Constructor
-    template <typename FUNC>
-    QuadratureHelm::QuadratureHelm( FUNC K ) : kappa(std::abs(K.kappa)) {}
+    //template <typename FUNC>
+    QuadratureHelm::QuadratureHelm( HelmKernel& K ) : kappa(std::abs(K.kappa)) {}
   
 
 
@@ -39,16 +39,15 @@ namespace FMM {
     
     // A uniform quadrature in phi and theta
     
-    template <typename FUNC>
-    Quadrature_Uniform::Quadrature_Uniform( FUNC K, double boxSize, double eps, complex k_, complex k_out_) 
+    Quadrature_Uniform::Quadrature_Uniform(HelmKernel& K, double boxSize, double eps, complex k_, complex k_out_) 
       : QuadratureHelm(K), k(k_), k_out(k_out_)
     {
 
-double A = 1;
-
-// TODO: FIX
-//for( int l = 0; l <= LMAX; l++ )
-//    A = std::max(A, std::abs(Mie(k, k_out, RADIUS, RHO, l) * Amos_sf_hankel_1(l, k_out*RADIUS)) );
+      double A = 1;
+      
+      // TODO: FIX
+      //for( int l = 0; l <= LMAX; l++ )
+      //    A = std::max(A, std::abs(Mie(k, k_out, RADIUS, RHO, l) * Amos_sf_hankel_1(l, k_out*RADIUS)) );
     
     
     double delta = 0.8;

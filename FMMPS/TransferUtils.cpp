@@ -33,6 +33,7 @@ namespace FMM {
     
     int N = matrix.size();
     int M = index->size();
+
     assert( (int) vec.size() == M );
     assert( M <= N );
     
@@ -58,6 +59,7 @@ namespace FMM {
     
     
   void S_Rotation::S_Init( int L ) {
+    S_Rotation::Init = true;
     // Only nonzero if l's are the same
     // from (l,m2) to (l,m1)
     index = new Indexing(L);
@@ -195,6 +197,7 @@ namespace FMM {
   }
 
   complex** S_Rotation::S_matrix;
+  bool S_Rotation::Init = false;
   Indexing* S_Rotation::index;
   
   
@@ -244,7 +247,10 @@ namespace FMM {
   
   
   // Initialization for translation along z-axis
-  void Z_transfer::Z_Init( int L ){ index = new Indexing(L); }
+  void Z_transfer::Z_Init( int L ){ 
+    Z_transfer::Init = true;
+    index = new Indexing(L); 
+  }
 
   // Destruction of translation along z-axis
   void Z_transfer::Z_Delete(){ delete index; }
@@ -442,7 +448,7 @@ namespace FMM {
   }
 
   Indexing* Z_transfer::index;
-	  
+  bool Z_transfer::Init = false;
 
 
 
@@ -493,10 +499,9 @@ namespace FMM {
     ( type == FORWARD ) ? index = index2 : index = index1;
     ( type == FORWARD ) ? L = (*index2)(index2->size()-1,0) :  L = (*index1)(index1->size()-1,0);
     
-
     //Perform positive phi rotation
     Z_phi->Apply(vec, index, Z_Rotation::POS);
-    
+
     //Apply S matrix
     S_F->Apply(vec, L, FORWARD);
     

@@ -9,22 +9,20 @@ namespace FMM {
   Indexing MLFMM_Env::global_index(LMAX);
   
 
-  MLFMM_Env::MLFMM_Env( HelmKernel K_, complex k_out_, std::vector<Vec3> p,
-			std::vector<Scatterer> ScL, int levels_, double eps)
-    : K(K_), k_out(k_out_), leaf_Translation(NScat), sourcefield(p), 
+  MLFMM_Env::MLFMM_Env( HelmKernel K_, double r, complex k_in_, complex k_out_, std::vector<Vec3> p,
+			std::vector<Scatterer> ScL_, int levels_, double eps)
+    : K(K_), k_in(k_in_), k_out(k_out_), ScL(ScL_), leaf_Translation(ScL.size()), sourcefield(p), 
       tree( p, levels_ ),    // Create the tree
       levels( levels_+1 ),       // Initialize std::vector of levels
       Interface_Level(-1)
   {
     
+
+ cout << "foo2" << endl;
     if( verbose >= 2 )
       cerr << tree << endl;
-    
-    
     int nLevels = tree.numLevels();                   // Number of levels in the tree
-    //double cutoff =  CUTOFF_SIZE*2*PI/real(k_out);    // Interface between low- and high-frequency
-    //cout << "cutoff : " << cutoff << endl;
-    
+
     // Construct each Level and give it the boxes it owns
     for( int L = 2; L <= nLevels; ++L ) {
       levels[L] = Level(tree.getBoxSize(L), k_out, CUTOFF_SIZE);
@@ -36,7 +34,8 @@ namespace FMM {
     if( verbose >= 2 ) cerr << "   Building Transfer and Close Lists..." << endl;
     
     for( int L = 2; L <= nLevels; ++L )
-      getLevel(L).setL();
+      // TODO: Pass k_in
+      getLevel(L).setL(eps, r, k_in, k_out);
     
     // Recursively build transfer and close lists from rootbox
     defineTransferAndClose(getBox(0,0), 0); 
@@ -49,7 +48,7 @@ namespace FMM {
 
     
     for( int L = 2; L <= nLevels; ++L ) {
-      getLevel(L).defineQuadrature( K, eps );
+      getLevel(L).defineQuadrature( K, eps);
       
       // Establish which level is at the interface between low- and high-frequency
 	    if( Interface(getLevel(L).getBoxSize()/2, CUTOFF_SIZE) || (Interface_Level == -1 && L == nLevels && getLevel(L-1).HF ) )
@@ -88,8 +87,14 @@ namespace FMM {
     
     // TODO: Currently making it bigger than it needs to be?
     // Initialiaze static variables for Transfer Utils
-    S_Rotation::S_Init( 2*maxIndexSize );
-    Z_transfer::Z_Init( 2*maxIndexSize );
+    if( ~S_Rotation::Init ){
+      S_Rotation::S_Init( 2*maxIndexSize );
+      cout << "Initializating rotation matrix" << endl; 
+    }
+    if( ~Z_transfer::Init ){
+      Z_transfer::Z_Init( 2*maxIndexSize );
+      cout << "Initializating Transfer along z-axis" << endl; 
+    }
     if( verbose >= 2 ) cerr << "   S_Rotation defined" << endl;
     
     // Define the interpolators and anterpolators required for each level
@@ -100,8 +105,7 @@ namespace FMM {
 	getLevel(L).defineAnterp( getLevel(L+1).getQuad() );
     }
     
-    if( verbose >= 2 )
-      cout << "   Reterpolators Defined" << endl;
+    if( verbose >= 2 ) cerr << "   Reterpolators Defined" << endl;
     
     
     
@@ -243,7 +247,7 @@ namespace FMM {
     Level& leafLevel = getLevel( nLevels );
     leafLevel.zeroFields();
 
-    for( int i = 0; i < NScat; i++ )
+    for( int i = 0; i < (int) ScL.size(); i++ )
       T_PWE[i].resize( global_index.size(), 0.);
     
     // ***** Bottom level translations *****

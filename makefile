@@ -1,123 +1,132 @@
-#Change upon moving folder
-PETSC_DIR=../PSC-FMM/petsc-3.2-p2
-PETSC_ARCH=arch-linux2-cxx-debug
-
-# Hack for linker... (ARMADILLO)
-#export LD_LIBRARY_PATH=/home/pletou1/Dropbox/Stanford/ResearchPSC/C++/PSC-FMM-ELASTIC/Armadillo/usr/lib64/
 export LD_LIBRARY_PATH=/home/pletou1/Dropbox/Stanford/ResearchPSC/C++/PSC-FMM-ELASTIC/Armadillo/usr/lib64/
 
-#PETSC_DIR=/usr/local/petsc-3.2-p2/
-
-CFLAGS	         = -O3 -Wall -pedantic -I/home/pletou1/Dropbox/Stanford/ResearchPSC/C++/gsl-1.16/include
+CFLAGS	         = -O3 -Wall -pedantic -I/home/pletou1/Dropbox/Stanford/ResearchPSC/C++/gsl-1.16/include -I/usr/include/mpi
 FFLAGS	         = 
 CPPFLAGS         = $(CFLAGS) -pg
 FPPFLAGS         =
 LOCDIR           = 
 
-#CLINKER          = g++
-FC=gfortran
+CLINKER          = mpicxx #g++
+FC               = gfortran
 
 CLEANFILES       =
 NP               = 1
 
 OBJFILES         = Coordinates.o Indexing.o Scatterer.o Distributions.o PSCEnv.o Transfer.o Translation_Function.o Quadrature.o SphericalHarmonicsTransform.o TransferUtils.o Transfer_Function.o Reterpolator.o Level.o NTree.o MLFMM_Env.o IncWave.o Solver.o L_choice.o Finalize.o Imaging.o
 
-include ${PETSC_DIR}/conf/variables
-include ${PETSC_DIR}/conf/rules
 
 ##################################################
 # Paths and Directories
 LIBDIR	= -L../AmosBessel/ -L../gsl-1.16/lib/ -L./Armadillo/usr/lib64/
-INCLDIR	= -I/home/pletou1/Dropbox/Stanford/ResearchPSC/C++/gsl-1.16/include -I./libAmosBessel/ -I./Armadillo/usr/include/ -I./LAPACK++/include/
+INCLDIR	= -I/home/pletou1/Dropbox/Stanford/ResearchPSC/C++/gsl-1.16/include -I./libAmosBessel/ -I./Armadillo/usr/include/ -I./LAPACK++/include/ -I/usr/include/mpi
 
 ##################################################
 # Libraries
-LIBS 	= -lgfortran -g77libs -lfftw3 -larmadillo -llapack -lblas -lm ../gsl-1.16/lib/libgsl.a ../gsl-1.16/lib/libgslcblas.a 
-
-#../AmosBessel/libAmosBessel.a
+LIBS 	= -lgfortran -g77libs -lfftw3 -larmadillo -llapack -lblas -lm ./gsl-1.16/lib/libgsl.a ./gsl-1.16/lib/libgslcblas.a 
+#-lmpichcxx -lmpich -lopa -lmpl -lrt -lcr -lpthread
 
 ##################################################
 # Executable 
 
-Main: Main.o  chkopts
-	-${CLINKER} -o Main $(OBJFILES) Main.o   $(LIBDIR) $(INCLDIR) ${LIBS}
+Main: $(OBJFILES) Main.o
+	${CLINKER} ${CFLAGS} $(OBJFILES) Main.o $(LIBDIR) $(INCLDIR) ${LIBS} -o Main
 	${RM} Main.o
 
-HK: HelmholtzKirchoff.o chkopts
-	-${CLINKER} -o HelmholtzKirchoff $(OBJFILES) HelmholtzKirchoff.o   $(LIBDIR) $(INCLDIR) ${LIBS}
+HK: $(OBJFILES) HelmholtzKirchoff.o 
+	${CLINKER} $(OBJFILES) HelmholtzKirchoff.o   $(LIBDIR) $(INCLDIR) ${LIBS} -o HelmholtzKirchoff
 	${RM} HelmholtzKirchoff.o
 
-DI: DisplacementImaging.o chkopts
-	-${CLINKER} -o DisplacementImaging $(OBJFILES) DisplacementImaging.o   $(LIBDIR) $(INCLDIR) ${LIBS}
+DI: $(OBJFILES) DisplacementImaging.o 
+	${CLINKER} ${CFLAGS} $(OBJFILES) DisplacementImaging.o   $(LIBDIR) $(INCLDIR) ${LIBS} -o DisplacementImaging
 	${RM} DisplacementImaging.o
 
-SR: SuperRes.o chkopts
-	-${CLINKER} -o SuperRes $(OBJFILES) SuperRes.o   $(LIBDIR) $(INCLDIR) ${LIBS}
+MF: $(OBJFILES) MultiFreq.o
+	${CLINKER} ${CFLAGS} $(OBJFILES) MultiFreq.o $(LIBDIR) $(INCLDIR) ${LIBS} -o MultiFreq
+	${RM} MultiFreq.o
+
+SR: SuperRes.o -${CLINKER} -o SuperRes $(OBJFILES) SuperRes.o   $(LIBDIR) $(INCLDIR) ${LIBS}
 	${RM} SuperRes.o
+
+EC: $(OBJFILES) ErrorCheck.o
+	${CLINKER} ${CFLAGS} $(OBJFILES) ErrorCheck.o $(LIBDIR) $(INCLDIR) ${LIBS} -o ErrorCheck
+	${RM} ErrorCheck.o
+
+FFH: $(OBJFILES) FarFieldHomogenization.o
+	${CLINKER} ${CFLAGS} $(OBJFILES) FarFieldHomogenization.o $(LIBDIR) $(INCLDIR) ${LIBS} -o FarFieldHomogenization
+	${RM} FarFieldHomogenization.o
+
+LS: $(OBJFILES) LS_check.o
+	${CLINKER} ${CFLAGS} $(OBJFILES) LS_check.o $(LIBDIR) $(INCLDIR) ${LIBS} -o LS_check
+	${RM} LS_check.o
+
+FLC: $(OBJFILES) FoldyLaxCheck.o
+	${CLINKER} ${CFLAGS} $(OBJFILES) FoldyLaxCheck.o $(LIBDIR) $(INCLDIR) ${LIBS} -o FoldyLaxCheck
+	${RM} FoldyLaxCheck.o
+
 
 
 # Core files
-Coordinates: Coordinates.o  chkopts
+Coordinates: Coordinates.o
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) Coordinates.cpp
 
-Indexing: Indexing.o  chkopts
+Indexing: Indexing.o
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) Indexing.cpp
 
-Scatterer: Scatterer.o  chkopts
+Scatterer: Scatterer.o
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) Scatterer.cpp
 
-Distributions: Distributions.o  chkopts
+Distributions: Distributions.o
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) Distributions.cpp
 
-Transfer: Transfer.o  chkopts
+Transfer: Transfer.o
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) Transfer.cpp
 
-IncWave: IncWave.o  chkopts
+IncWave: IncWave.o
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) IncWave.cpp
 
-PSCEnv: PSCEnv.o  chkopts
+PSCEnv: PSCEnv.o
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) PSCEnv.cpp
 
-Solver: Solver.o  chkopts
+Solver: Solver.o
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) Solver.cpp
 
-L_choice: L_choice.o  chkopts
+L_choice: L_choice.o
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) L_choice.cpp
 
-Finalize: Finalize.o  chkopts
+Finalize: Finalize.o
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) Finalize.cpp
 
-Imaging: Imaging.o  chkopts
+Imaging: Imaging.o
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) Imaging.cpp
 
 
 
 # FMMPS files
-Translation_Function: ./FMMPS/Translation_Function.o  chkopts
+Translation_Function: ./FMMPS/Translation_Function.cpp
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) ./FMMPS/Translation_Function.cpp
 
-Quadrature: ./FMMPS/Quadrature.o  chkopts
+Quadrature: ./FMMPS/Quadrature.cpp
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) ./FMMPS/Quadrature.cpp
 
-SHT: ./FMMPS/SphericalHarmonicsTransform.o  chkopts
+SHT: ./FMMPS/SphericalHarmonicsTransform.cpp
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) ./FMMPS/SphericalHarmonicsTransform.cpp
 
-TransferUtils: ./FMMPS/TransferUtils.o  chkopts
+TransferUtils: ./FMMPS/TransferUtils.cpp
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) ./FMMPS/TransferUtils.cpp
 
-Transfer_Function: ./FMMPS/Transfer_Function.o  chkopts
+Transfer_Function: ./FMMPS/Transfer_Function.cpp
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) ./FMMPS/Transfer_Function.cpp
 
-Reterpolator: ./FMMPS/Reterpolator.o  chkopts
+Reterpolator: ./FMMPS/Reterpolator.cpp
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) ./FMMPS/Reterpolator.cpp
 
-Level: ./FMMPS/Level.o  chkopts
+Level: ./FMMPS/Level.cpp
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) ./FMMPS/Level.cpp
 
-NTree: ./FMMPS/NTree.o  chkopts
+NTree: ./FMMPS/NTree.cpp
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) ./FMMPS/NTree.cpp
 
-MLFMM_Env: ./FMMPS/MLFMM_Env.o  chkopts
+MLFMM_Env: ./FMMPS/MLFMM_Env.cpp
 	-${CLINKER} -c $(LIBDIR) $(INCLDIR) ./FMMPS/MLFMM_Env.cpp
 
 

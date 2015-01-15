@@ -1,3 +1,26 @@
+/*
+ *  Translation_Function.cpp
+ *  PSCAcoustic
+ *
+ *  Translations between boxes at given level (high- and low-frequency)
+ *
+ *
+ *  Copyright (C) 2014 Pierre-David Letourneau
+ *  
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+*/
+
 #ifndef TRANSLATION_FUNCTION_FMM_CPP
 #define TRANSLATION_FUNCTION_FMM_CPP
 
@@ -9,46 +32,6 @@ namespace FMM {
   // Initialize static index
   Indexing Translation_Function::global_index(LMAX);
   
-  // TODO: Still needed??
-  
-  //Translate partial wave expansion of each scatterer to center of its box at the leaf level
-  //from vec2 to vec1
-  /* void Translation_Function::ManualTranslation_Direct( const Vec3& r, complex k_out,
-						       std::vector<complex>& vec1,  Indexing* index1, 
-						       const std::vector<complex>& vec2, Indexing* index2, bool reg) 
-  {
-    assert( (int) vec1.size() == (int) index1->size() );
-    assert( (int) vec2.size() == (int) index2->size() );
-    
-    //TODO : merge Pvec and Vec3
-    double rad, theta, phi;
-    Cart2Sf(r.x, r.y, r.z, rad, theta, phi);
-    
-    
-    PointAndShoot PS(rad, k_out, theta, phi, index1, index2, reg);
-    vec1 = PS.Apply(vec2, FORWARD);
-  }
-  
-
-
-    //Translate Far-field signature from vec2 to vec1
-  void Translation_Function::ManualTranslation_HF(const Vec3& r, 
-						  std::vector<complex>& vec1, const std::vector<complex>& vec2, 
-						  Quadrature* quad) 
-  {
-    assert( (int) vec1.size() == (int) quad->size() );
-    assert( (int) vec2.size() == (int) quad->size() );
-    
-    double kappa = quad->kappa;
-    int K = quad->size();
-    for( int k = 0; k < K; ++k ) {
-      const double kr = kappa * r.dot( quad->getPoint(k).s );
-      vec1[k] = vec2[k] * complex( cos(kr), sin(kr) );
-    }
-  }
-
-  */
-
 
   
   //-- Translation in the high-frequency regime --//

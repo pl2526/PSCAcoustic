@@ -70,7 +70,7 @@ namespace FMM {
     public:
       
       // Constructors
-      Level( double boxSize_ = 0, complex k_out_ = K_L_OUT, complex k_ = K_L, double cutoff = 2*PI*OMEGA );
+      Level( double boxSize_ = 0, complex k_out_ = K_OUT, complex k_ = K, double cutoff = 2*PI*OMEGA );
 
       // Destructor
       ~Level();

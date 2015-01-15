@@ -1,12 +1,26 @@
 /*
- *  WignerIntegrals.h
- *  PSC
+ *  TransferUtils.h
+ *  PSCAcoustic
  *
- *  Created by Pierre-David Letourneau on 4/25/11.
- *  Copyright 2011 Stanford University. All rights reserved.
+ *  Point-and-shoot method for transfers in low-frequency regime.
  *
- *  Computation/Storage of integrals of the form \int Y_u^v Y_m^n Y_p^q (Wigner-like integrals) appearing in the     *  transfer operator for spherical wave functions. 
- */
+ *
+ *  Copyright (C) 2014 Pierre-David Letourneau
+ *  
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+*/
+
 #ifndef TU_FMM_H
 #define TU_FMM_H
 
@@ -57,6 +71,7 @@ namespace FMM {
   struct S_Rotation 
   {
     static complex **S_matrix;
+    static bool Init;
     static Indexing* index;
     
     // Constructor/Destructor
@@ -98,14 +113,17 @@ namespace FMM {
     Indexing* index1;
     Indexing* index2;
     int L_1, L_2, L;
+
+  public:
     static Indexing* index;
+    static bool Init;
     
     std::vector<complex> coeff;
     
-  public:
     
     // Constructor/Destructor
     Z_transfer( double R, complex k_out, Indexing* index1_, Indexing* index2_, bool reg);
+    Z_transfer(){};
     ~Z_transfer(){}
     
     // Initialization/Destruction of Z_transfer matrix
@@ -154,6 +172,7 @@ namespace FMM {
     // Constructor/Destructor
     // (Accelerated Translation/Transfer from 2 to 1)
     PointAndShoot(double r, complex k_out, double theta, double phi, Indexing* index1_, Indexing* index2_, bool reg);
+    PointAndShoot(){};
     ~PointAndShoot();
     
     // Application of operator

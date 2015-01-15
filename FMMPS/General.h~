@@ -3,27 +3,14 @@
 
 // A general library of useful methods and support packages
 
-#include <iostream>
-#include <iomanip>
 #include <cstdio>
 #include <cstdlib>
-#include <string> 
-#include <fstream>
 
-#include <cmath>
 #include <limits>
-#include <complex>
 #include <list>
-#include <vector>
-//#include <set>
-#include <map>
 #include <algorithm>
 
 #include <fftw3.h>
-
-// Define to remove all assert statements
-//#define NDEBUG
-#include <assert.h>
 
 #include "../General.h"
 
@@ -465,11 +452,7 @@ namespace FMM {
     gsl_integration_glfixed_table_free( GLTable );
   }
   
-
-  //#include "L_choice.h"
-  
 }
 
-//#include "TransferUtils.h"
 
 #endif

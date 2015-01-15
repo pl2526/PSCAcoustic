@@ -7,7 +7,6 @@
 #include "SphericalHarmonicsTransform.h"
 #include "../Scatterer.h"
 #include "../Indexing.h"
-//#include "L_choice.h"
 
 
 /*

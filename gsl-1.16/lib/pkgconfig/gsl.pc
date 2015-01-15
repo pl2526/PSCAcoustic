@@ -1,0 +1,11 @@
+prefix=/home/pletou1/Dropbox/Stanford/ResearchPSC/C++/gsl-1.16
+exec_prefix=/home/pletou1/Dropbox/Stanford/ResearchPSC/C++/gsl-1.16
+libdir=/home/pletou1/Dropbox/Stanford/ResearchPSC/C++/gsl-1.16/lib
+includedir=/home/pletou1/Dropbox/Stanford/ResearchPSC/C++/gsl-1.16/include
+GSL_CBLAS_LIB=-lgslcblas
+
+Name: GSL
+Description: GNU Scientific Library
+Version: 1.16
+Libs: -L/home/pletou1/Dropbox/Stanford/ResearchPSC/C++/gsl-1.16/lib -lgsl ${GSL_CBLAS_LIB} -lm -lm 
+Cflags: -I/home/pletou1/Dropbox/Stanford/ResearchPSC/C++/gsl-1.16/include

@@ -1,17 +1,29 @@
+/*
+ *  Solver.cpp
+ *  PSCAcoustic
+ *
+ *  Iterative solver using Krylov subspace method
+ *
+ *
+ *  Copyright (C) 2014 Pierre-David Letourneau
+ *  
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  any later version.
+ *  
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+*/
+
+
 #ifndef SOLVER_CPP
 #define SOLVER_CPP
-
-/*
- *  Solver.h
- *  PSC
- *
- *  Created by Pierre-David Letourneau on 3/6/11.
- *  Copyright 2011 Stanford University. All rights reserved.
- *
- *  Iterative linear solver implementation 
- *  through PETSc library.
- */
-
 
 #include "Solver.h"
 
@@ -46,8 +58,8 @@ void Solver::RHSInit( std::vector<IncWave*> IW, std::vector<Scatterer>& ScL, std
 {
 
   // Initialize
-  for( int n = 0 ; n < NScat ; n++ )
-    for( int i = 0; i < (LMAX+1)*(LMAX+1); i++ )
+  for( int n = 0 ; n < (int) ScL.size() ; n++ )
+    for( int i = 0; i < (int) RHS[n].size(); i++ )
       RHS[n][i] = 0;
  
 
@@ -58,7 +70,7 @@ void Solver::RHSInit( std::vector<IncWave*> IW, std::vector<Scatterer>& ScL, std
   for( int k = 0; k < N_src; k++ ){
     
     // For each scatterer
-    for( int n = 0 ; n < NScat ; n++ )
+    for( int n = 0 ; n < (int) ScL.size() ; n++ )
       {
 	//Transfer expansion about center of scatterer
 	Pvec p = ScL[n].getLocation();
@@ -67,7 +79,7 @@ void Solver::RHSInit( std::vector<IncWave*> IW, std::vector<Scatterer>& ScL, std
 	//Apply T-matrix
 	ScL[n].TM_Apply(rhs);
 
-	for( int i = 0; i < (LMAX+1)*(LMAX+1); i++ )
+	for( int i = 0; i < (int) RHS[n].size(); i++ )
 	  RHS[n][i] += rhs[i];
 	
       }
@@ -79,33 +91,39 @@ void Solver::RHSInit( std::vector<IncWave*> IW, std::vector<Scatterer>& ScL, std
 
 // Solve linear solver, variant of GMRES
 void Solver::Solve(PSC_Env& PSC_env, std::vector<Scatterer>& ScL, std::vector< std::vector<complex> >& RHS, 
-		   std::vector< std::vector<complex> >& u,  double& res, double& rel_res, double& cond )
+		   std::vector< std::vector<complex> >& u,  double& res, double& rel_res, double& cond, int& Niter, int idx )
 {
     //u = RHS;
     //return;
     
 
    // Right-hand side
-    Matrix<complex, Dynamic, 1> b; b.resize(NScat*Index.size(),1);
-    std::vector< std::vector<complex> > v(NScat, std::vector<complex>(Index.size()));
+    Matrix<complex, Dynamic, 1> b; b.resize(ScL.size()*Index.size(),1);
+    std::vector< std::vector<complex> > v(ScL.size(), std::vector<complex>(Index.size()));
     Matrix<complex, Dynamic, 1> x;
     Matrix<complex, Dynamic, 1> y;
     Matrix<complex, Dynamic, Dynamic> H; H.resize(2,1); // Hessenberg matrix    
 
     double norm_RHS = norm(RHS);
-    for( int n = 0; n < NScat; n++ ){
+    for( int n = 0; n < (int) ScL.size(); n++ ){
       for( int i = 0; i < Index.size(); i++ ){
 	b(n*Index.size()+i) = RHS[n][i];
-	u[n][i] = RHS[n][i];///norm_RHS;
+	u[n][i] = RHS[n][i];
       }
     }
 
 
 
   if(0){
+
+    for( int n = 0; n < (int) ScL.size(); n++ )
+      for( int i = 0; i < Index.size(); i++ )
+	u[n][i] /= norm_RHS;
+    
+
     // *** GMRES ***
-    Matrix<complex, Dynamic, Dynamic> R; R.resize(NScat*Index.size(),1);
-    Matrix<complex, Dynamic, Dynamic> Q; Q.resize(NScat*Index.size(),1);
+    Matrix<complex, Dynamic, Dynamic> R; R.resize(ScL.size()*Index.size(),1);
+    Matrix<complex, Dynamic, Dynamic> Q; Q.resize(ScL.size()*Index.size(),1);
     //FullPivHouseholderQR<complex, Dynamic, Dynamic> QR;
     Matrix<complex, Dynamic, 1> z; 
 
@@ -115,14 +133,16 @@ void Solver::Solve(PSC_Env& PSC_env, std::vector<Scatterer>& ScL, std::vector< s
     ScatteringOperator(PSC_env, ScL, u, v);
     cout << "    ***Applying scattering operator: done" << endl;
     double rho_0 = 0;
-    for( int n = 0; n < NScat; n++ ){
-      for( int i = 0; i < Index.size(); i++ ){
-	Q(n*Index.size() + i) = u[n][i] - v[n][i];
-	rho_0 += std::abs(Q(n*Index.size() + i)) * std::abs(Q(n*Index.size() + i)) ;
+    for( int n = 0; n < (int) ScL.size(); n++ )
+      {
+	for( int i = 0; i < Index.size(); i++ )
+	  {
+	    Q(n*Index.size() + i) = u[n][i] - v[n][i];
+	    rho_0 += std::abs(Q(n*Index.size() + i)) * std::abs(Q(n*Index.size() + i)) ;
+	  }
       }
-    }
     rho_0 = sqrt(rho_0);
-    for( int n = 0; n < NScat; n++ )
+    for( int n = 0; n < (int) ScL.size(); n++ )
       for( int i = 0; i < Index.size(); i++ )
 	Q(n*Index.size() + i) /= rho_0;
 
@@ -131,12 +151,12 @@ void Solver::Solve(PSC_Env& PSC_env, std::vector<Scatterer>& ScL, std::vector< s
     int k = 0;
     while( k < MAXITS ){
       if( k > 0 ){
-	for( int n = 0; n < NScat; n++ )
+	for( int n = 0; n < (int) ScL.size(); n++ )
 	  for( int i = 0; i < Index.size(); i++ )
 	    Q(n*Index.size() + i,k) = R(n*Index.size() + i,k-1) / H(k,k-1);
       }
 
-      for( int n = 0; n < NScat; n++ ){
+      for( int n = 0; n < (int) ScL.size(); n++ ){
 	for( int i = 0; i < Index.size(); i++ ){
 	  u[n][i] = Q(n*Index.size() + i,k);
 	  v[n][i] = 0.;
@@ -145,40 +165,43 @@ void Solver::Solve(PSC_Env& PSC_env, std::vector<Scatterer>& ScL, std::vector< s
       cout << "    ***Applying scattering operator (TA)..." << endl;
       ScatteringOperator(PSC_env, ScL, u, v);
       cout << "    ***Applying scattering operator: done" << endl;
-      for( int n = 0; n < NScat; n++ )
+      for( int n = 0; n < (int) ScL.size(); n++ )
 	for( int i = 0; i < Index.size(); i++ )
 	  R(n*Index.size() + i,k) = u[n][i] - v[n][i];
       
       // Orthogonalize
       for( int j = 0; j <= k; j++ ){
 	H(j,k) = 0;
-	  for( int n = 0; n < NScat; n++ )
+	// Inner product
+	  for( int n = 0; n < (int) ScL.size(); n++ )
 	    for( int i = 0; i < Index.size(); i++ )
 	      H(j,k) += std::conj(Q(n*Index.size() + i,j)) * R(n*Index.size() + i,k);
 
-	  for( int n = 0; n < NScat; n++ )
+	  for( int n = 0; n < (int) ScL.size(); n++ )
 	    for( int i = 0; i < Index.size(); i++ )
 	      R(n*Index.size() + i,k) -= H(j,k) * Q(n*Index.size() + i,j);
       }
+
+      // Populate Hessenberg matrix
       H(k+1,k) = 0;
       complex val = 0;
-      for( int n = 0; n < NScat; n++ ){
+      for( int n = 0; n < (int) ScL.size(); n++ ){
 	for( int i = 0; i < Index.size(); i++ ){
 	  H(k+1,k) += std::abs(R(n*Index.size() + i,k)) * std::abs(R(n*Index.size() + i,k));
-	  if( k > 1 )
+	  if( k > 0 )
 	    val += std::conj(Q(n*Index.size() + i,0)) * Q(n*Index.size() + i,k);
 	}
       }
       H(k+1,k) = sqrt(H(k+1,k));
       
-      cout << "val : " << val << endl;
+      cout << "Orthogonal? (val) : " << val << endl;
 
       /* cout << "before" << endl;
       	cout << H << endl;
 	cout << endl << endl << H.rows() << " : " << H.cols() << endl;*/
       
       // Compute L-S residual
-      if( k%K_LS == 0 ){
+      if( k%K_LS == 0 || k == (MAXITS-1) ){
 
 	// R.h.s.
 	z.resize(H.rows(),1);
@@ -197,11 +220,11 @@ void Solver::Solve(PSC_Env& PSC_env, std::vector<Scatterer>& ScL, std::vector< s
 	cout << "L-S residual : " << std::setprecision(15) << res << endl;
 	cout << "L-S relative residual : " << std::setprecision(15) << rel_res << endl << endl;
 	
-	if( res < ATOL || rel_res < RTOL){
+	if( res < ATOL || rel_res < RTOL || k == (MAXITS-1) ){
 	  cout << "Stopping criterion satisfied" << endl;
 	  
 	  x = b + Q*y;
-	  for( int n = 0; n < NScat; n++ )
+	  for( int n = 0; n < (int) ScL.size(); n++ )
 	    for( int i = 0; i < (int) Index.size(); i++ )
 	      u[n][i] += norm_RHS*x(n*Index.size() + i);
 
@@ -214,8 +237,8 @@ void Solver::Solve(PSC_Env& PSC_env, std::vector<Scatterer>& ScL, std::vector< s
 
       
       
-      Q.conservativeResize(NScat*Index.size(), Q.cols()+1);
-      R.conservativeResize(NScat*Index.size(), R.cols()+1);
+      Q.conservativeResize(ScL.size()*Index.size(), Q.cols()+1);
+      R.conservativeResize(ScL.size()*Index.size(), R.cols()+1);
       H.conservativeResize(H.rows()+1, H.cols()+1);
 
       k++;
@@ -229,8 +252,8 @@ void Solver::Solve(PSC_Env& PSC_env, std::vector<Scatterer>& ScL, std::vector< s
     
 
     
-    Matrix<complex, Dynamic, Dynamic> A; A.resize(NScat*Index.size(),1);
-    Matrix<complex, Dynamic, Dynamic> M; M.resize(NScat*Index.size(),1);
+    Matrix<complex, Dynamic, Dynamic> A; A.resize(ScL.size()*Index.size(),1);
+    Matrix<complex, Dynamic, Dynamic> M; M.resize(ScL.size()*Index.size(),1);
 
     
     // Solution
@@ -238,28 +261,20 @@ void Solver::Solve(PSC_Env& PSC_env, std::vector<Scatterer>& ScL, std::vector< s
     double comp_time = clock();
     while( k < MAXITS )
       {
-	cout << "Iteration : " << k << endl;
+	cout << "rank : " << idx << ";  Iteration : " << k << endl;
 	
-	
-	// Hessenberg matrix
-	// Put zero values to zero in Hessenberg matrix (for computing condition number estimate)
-	//H.conservativeResize((k+2), k+1);
-	//for( int j = 0; j < (k-1); j++ )
-	// H(k,j) = 0;
 	
 	// Orthogonalize and apply operator
 	for( int j = 0; j < k; j++ )
 	  {
 	    complex dot = 0.;
-	    for( int n = 0; n < NScat; n++ ){
+	    for( int n = 0; n < (int) ScL.size(); n++ ){
 	      for( int i = 0; i < Index.size(); i++ ){
 		dot += conj( M(n*Index.size() + i, j) ) * u[n][i];
 	      }
 	    }
-	    // Populate Hessenberg matrix
-	    //H(j,k) = dot;
 	    
-	    for( int n = 0; n < NScat; n++ ){
+	    for( int n = 0; n < (int) ScL.size(); n++ ){
 	      for( int i = 0; i < Index.size(); i++ ){
 		u[n][i] -= dot*M(n*Index.size() + i, j);
 	      }
@@ -269,23 +284,23 @@ void Solver::Solve(PSC_Env& PSC_env, std::vector<Scatterer>& ScL, std::vector< s
 	
 	// Normalize
 	double Norm = norm(u);
-	//H(k+1,k) = Norm;
-	for( int n = 0; n < NScat; n++ ){
+	for( int n = 0; n < (int) ScL.size(); n++ ){
 	  for( int i = 0; i < Index.size(); i++ ){
 	    u[n][i] /= Norm;
 	    M(n*Index.size()+i, k) = u[n][i];
 	  }
 	}
+	
 
-
-	for( int j = 0; j < k; j++ ){
-	  complex dot = 0;
-	  for( int n = 0; n < NScat; n++ )
-	    for( int i = 0; i < Index.size(); i++ )
-	      dot += conj( M(n*Index.size() + i, j) ) * M(n*Index.size() + i, k);
-	}
-	      
-
+	for( int j = 0; j < k; j++ )
+	  {
+	    complex dot = 0;
+	    for( int n = 0; n < (int) ScL.size(); n++ )
+	      for( int i = 0; i < Index.size(); i++ )
+		dot += conj( M(n*Index.size() + i, j) ) * M(n*Index.size() + i, k);
+	  }
+	
+	
 	
 	// Apply scattering operator
 	cout << "    ***Applying scattering operator (TA)..." << endl;
@@ -297,7 +312,7 @@ void Solver::Solve(PSC_Env& PSC_env, std::vector<Scatterer>& ScL, std::vector< s
 
 	// TODO: could be faster
 	// Store values and build linear system
-	for( int n = 0; n < NScat; n++ )
+	for( int n = 0; n < (int) ScL.size(); n++ )
 	  for( int i = 0; i < Index.size(); i++ )
 	    A(n*Index.size()+i, k) = u[n][i] - v[n][i];
 
@@ -308,7 +323,7 @@ void Solver::Solve(PSC_Env& PSC_env, std::vector<Scatterer>& ScL, std::vector< s
 
 
 	// Compute L-S residual
-	if( k%K_LS == 0 ){
+	if( k%K_LS == 0 || k == (MAXITS-1) ){
 
 	  // Solve L-S
 	  x = A.jacobiSvd(ComputeThinU | ComputeThinV).solve(b);
@@ -318,72 +333,75 @@ void Solver::Solve(PSC_Env& PSC_env, std::vector<Scatterer>& ScL, std::vector< s
 	  res = abs(sqrt(nu(0,0)));
 	  rel_res = res / norm(RHS);
 
-	  cout << "L-S residual : " << std::setprecision(15) << res << endl;
-	  cout << "L-S relative residual : " << std::setprecision(15) << rel_res << endl << endl;
+	  cout << "rank : " << idx << " ;  Iteration : " << k << " ;  L-S residual : " << std::setprecision(15) << res << endl;
+	  cout << "rank : " << idx << " ;  Iteration : " << k << " ;  L-S relative residual : " << std::setprecision(15) << rel_res << endl << endl;
 
-	  if( res < ATOL || rel_res < RTOL){
+	  if( res < ATOL || rel_res < RTOL || k == (MAXITS-1) ){
 	    cout << "Stopping criterion satisfied" << endl;
 
 	    // TODO: currently inefficient ?
-	    for( int n = 0; n < (int) NScat; n++ )
+	    for( int n = 0; n < (int) ScL.size(); n++ )
 	      for( int i = 0; i < (int) Index.size(); i++ )
 		u[n][i] = 0.;
 	        
 	    for( int k = 0; k < M.cols(); k++)
-	      for( int n = 0; n < NScat; n++ )
+	      for( int n = 0; n < (int) ScL.size(); n++ )
 		for( int i = 0; i < (int) Index.size(); i++ )
 		  u[n][i] += x(k) * M(n*Index.size()+i, k);
+	    
+	    // Check accuracy
+	    double acc = 0;
+	    ScatteringOperator(PSC_env, ScL, u, v);
+	    for( int n = 0; n < (int) ScL.size(); n++ )
+	      for( int i = 0; i < (int) Index.size(); i++ )
+		acc += pow(std::abs( u[n][i] - v[n][i] - RHS[n][i] ), 2.);
+	    cout << "Accuracy : " << sqrt(acc) << endl;
+	    cout << "Relative accuracy : " << sqrt(acc)/norm(u) << endl;
+	    
+	    
+	    // Compute estimate of condition number
+	    JacobiSVD< Matrix<complex, Dynamic, Dynamic> > svd(A, ComputeThinU | ComputeThinV);
+	    //JacobiSVD< Matrix<complex, Dynamic, Dynamic> > svd(H.rightCols(H.cols()-1), ComputeThinU | ComputeThinV);
+	    //Eigen::SelfAdjointEigenSolver< Matrix<complex, Dynamic, Dynamic> > svd(H);
+	    
+	    
+	    double sigma_max = 0;
+	    double sigma_min = 1e10;
+	    for( int i = 0; i < (A.cols()-1); i++ ){
+	      sigma_max = std::max(sigma_max, std::abs(1.-(svd.singularValues())(i)) );
+	      sigma_min = std::min(sigma_min, std::abs(1.-(svd.singularValues())(i)) );
+	    }
+	    
+	    Niter = k;
+	    cond = sigma_max / sigma_min;
+	    cout << "Approximation of condition number : " << cond << endl;
+	    
 	    
 	    break;
 	  }
 	}
-
+	
 	
 	// Increase size if necessary
-	A.conservativeResize(NScat*Index.size(), A.cols()+1);
-	M.conservativeResize(NScat*Index.size(), M.cols()+1);
+	A.conservativeResize(ScL.size()*Index.size(), A.cols()+1);
+	M.conservativeResize(ScL.size()*Index.size(), M.cols()+1);
 	
 	k++;    // Increment iterate
       }
     comp_time = (clock() - comp_time)*1./CLOCKS_PER_SEC;
     
-    
-    
-    // Check accuracy
-    double acc = 0;
-    ScatteringOperator(PSC_env, ScL, u, v);
-    for( int n = 0; n < (int) NScat; n++ )
-      for( int i = 0; i < (int) Index.size(); i++ )
-	acc += pow(std::abs( u[n][i] - v[n][i] - RHS[n][i] ), 2.);
-    cout << "Accuracy : " << sqrt(acc) << endl;
-    cout << "Relative accuracy : " << sqrt(acc)/norm(u) << endl;
-    
-    
-    // Compute estimate of condition number
-    JacobiSVD< Matrix<complex, Dynamic, Dynamic> > svd(A, ComputeThinU | ComputeThinV);
-    //JacobiSVD< Matrix<complex, Dynamic, Dynamic> > svd(H.rightCols(H.cols()-1), ComputeThinU | ComputeThinV);
-    //Eigen::SelfAdjointEigenSolver< Matrix<complex, Dynamic, Dynamic> > svd(H);
-    
-    cout << "FOO" << endl;
-    
-    double sigma_max = 0;
-    double sigma_min = 1e10;
-    for( int i = 0; i < (A.cols()-1); i++ ){
-      sigma_max = std::max(sigma_max, std::abs(1.-(svd.singularValues())(i)) );
-      sigma_min = std::min(sigma_min, std::abs(1.-(svd.singularValues())(i)) );
-    }
-    
-    cond = sigma_max / sigma_min;
-    cout << "Approximation of condition number : " << cond << endl;
-    
   }
+
+
+  
 }
+
 
 // Operator TA
 void Solver::ScatteringOperator( PSC_Env& PSC_env, std::vector<Scatterer>& ScL, std::vector< std::vector<complex > >& u,
 				 std::vector< std::vector<complex > >& v){
 
-  for( int n = 0; n < NScat; n++ )
+  for( int n = 0; n < (int) ScL.size(); n++ )
     for( int i = 0; i < Index.size(); i++ )
       v[n][i] = 0;
 
@@ -391,7 +409,7 @@ void Solver::ScatteringOperator( PSC_Env& PSC_env, std::vector<Scatterer>& ScL, 
   PSC_env.getTransfer()->execute(u, v);
 
   // Apply T-matrix
-  for( int n = 0; n < NScat ; n++ )
+  for( int n = 0; n < (int) ScL.size() ; n++ )
     ScL[n].TM_Apply(v[n]);
 
   return;
